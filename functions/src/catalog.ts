@@ -16,7 +16,7 @@ function fromRecord(id: string, value: Record<string, unknown>): Candidate | nul
   const number = (key: string) => typeof value[key] === 'number' && Number.isFinite(value[key]) ? value[key] as number : NaN;
   const url = text('sourceUrl');
   const candidate: Candidate = {
-    id, title: text('title'), category: text('category'), summary: text('summary'), listedAt: text('listedAt'), startsAt: text('startsAt'),
+    id, title: text('title'), category: text('category'), summary: text('summary'), listedAt: text('listedAt'), startsAt: text('startsAt'), signupBy: text('signupBy') || null,
     durationHours: number('durationHours'), totalCost: number('totalCost'), currency: text('currency').toUpperCase(),
     distanceKm: number('distanceKm'), location: text('location'), place: text('place'),
     latitude: Number.isFinite(number('latitude')) ? number('latitude') : undefined,
@@ -24,6 +24,7 @@ function fromRecord(id: string, value: Record<string, unknown>): Candidate | nul
     sourceUrl: url || null, verifiedAt: text('verifiedAt') || null,
     status: text('status') as Candidate['status'], mode: 'live',
   };
+  if (candidate.signupBy && !Number.isFinite(Date.parse(candidate.signupBy))) return null;
   if (!candidate.title || !candidate.place || !candidate.location || !Number.isFinite(Date.parse(candidate.listedAt)) || !Number.isFinite(Date.parse(candidate.startsAt)) || !Number.isFinite(candidate.totalCost) || !Number.isFinite(candidate.distanceKm) || !Number.isFinite(candidate.durationHours) || !/^[A-Z]{3}$/.test(candidate.currency) || !['active', 'cancelled', 'full'].includes(candidate.status)) return null;
   return candidate;
 }

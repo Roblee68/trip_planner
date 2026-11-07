@@ -15,7 +15,7 @@ export const remoteScoutConfigured = process.env.EXPO_PUBLIC_PBB_REMOTE_SCOUT ==
 const validCategories: Category[] = ['Dance', 'Outdoors', 'Arts', 'Food', 'Learning', 'Wellness'];
 
 type Pick = {
-  id: string; title: string; category: string; summary: string; listedAt: string; startsAt: string;
+  id: string; title: string; category: string; summary: string; listedAt: string; startsAt: string; signupBy?: string | null; status?: 'active' | 'full' | 'cancelled';
   durationHours: number; totalCost: number; currency: string; distanceKm: number;
   location: string; place: string; sourceUrl: string | null; verifiedAt: string | null;
   mode: 'sample' | 'live'; reason: string;
@@ -25,7 +25,7 @@ type ScoutResponse = { message: string; picks: Pick[]; followUp: string | null; 
 export function pickToExperience(pick: Pick): Experience {
   const category: Category = validCategories.includes(pick.category as Category) ? pick.category as Category : 'Learning';
   return {
-    id: pick.id, title: pick.title, category, summary: pick.summary, startsAt: pick.startsAt,
+    id: pick.id, title: pick.title, category, summary: pick.summary, startsAt: pick.startsAt, signupBy: pick.signupBy ?? undefined, status: pick.status,
     durationHours: pick.durationHours, totalCost: pick.totalCost, currency: pick.currency,
     distanceKm: pick.distanceKm, location: pick.location, place: pick.place, sourceUrl: pick.sourceUrl ?? undefined,
     verifiedAt: pick.verifiedAt ?? undefined, mode: pick.mode, listedAt: pick.listedAt,
@@ -43,7 +43,7 @@ export async function askRemoteScout(prompt: string, preferences: Preferences, r
     prompt: prompt.trim() || 'Find an interesting experience for me',
     place: preferences.place.trim(), currency: preferences.currency.trim().toUpperCase(),
     maxBudget: preferences.maxBudget, maxDistanceKm: preferences.maxDistanceKm,
-    interests: preferences.interests, refinement,
+    interests: preferences.interests, topics: preferences.topics, travelModes: preferences.travelModes, refinement,
   });
   return response.data as ScoutResponse;
 }

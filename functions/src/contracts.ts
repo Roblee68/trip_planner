@@ -5,6 +5,7 @@ export type Candidate = {
   summary: string;
   listedAt: string;
   startsAt: string;
+  signupBy?: string | null;
   durationHours: number;
   totalCost: number;
   distanceKm: number;
@@ -28,6 +29,8 @@ export type ScoutRequest = {
   maxBudget: number;
   maxDistanceKm: number;
   interests: string[];
+  topics: string[];
+  travelModes: string[];
   refinement: 'balanced' | 'different' | 'cheaper' | 'closer';
 };
 
@@ -38,6 +41,7 @@ export type ScoutPick = {
   summary: string;
   listedAt: string;
   startsAt: string;
+  signupBy?: string | null;
   durationHours: number;
   totalCost: number;
   currency: string;
@@ -47,6 +51,7 @@ export type ScoutPick = {
   sourceUrl: string | null;
   verifiedAt: string | null;
   mode: 'sample' | 'live';
+  status: 'active' | 'full' | 'cancelled';
   reason: string;
 };
 

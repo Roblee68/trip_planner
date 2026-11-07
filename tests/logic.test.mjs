@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { defaultPreferences, daysFromNow, opportunityAlerts, rankExperiences } from '../src/logic.ts';
+import { defaultPreferences, daysFromNow, matchedTopics, opportunityAlerts, rankExperiences } from '../src/logic.ts';
 
 const item = (id, category, cost, km, starts, listed = -1) => ({
   id, title: id, category, format: 'Workshop', summary: '', location: 'Toronto', distanceKm: km,
@@ -31,4 +31,12 @@ test('live alerts need a recent source check and a linked source', () => {
   assert.equal(opportunityAlerts([{ ...base, sourceUrl: undefined }], defaultPreferences, {}, []).length, 0);
   assert.equal(opportunityAlerts([{ ...base, verifiedAt: daysFromNow(-3) }], defaultPreferences, {}, []).length, 0);
   assert.equal(opportunityAlerts([{ ...base, currency: 'EUR' }], defaultPreferences, {}, []).length, 0);
+});
+
+test('specific interests match activities and selected travel modes limit the feed', () => {
+  const pottery = { ...item('ceramic mug workshop', 'Arts', 30, 8, 5), summary: 'A hands-on pottery class', travel: { modes: ['transit', 'train'] } };
+  assert.deepEqual(matchedTopics(pottery, ['Pottery', 'Classes', 'Hiking']), ['Pottery', 'Classes']);
+  const settings = { ...defaultPreferences, interests: [], topics: ['Pottery'], travelModes: ['transit'] };
+  assert.deepEqual(rankExperiences([pottery], settings, {}, []).map(value => value.id), [pottery.id]);
+  assert.deepEqual(rankExperiences([pottery], { ...settings, travelModes: ['car'] }, {}, []), []);
 });

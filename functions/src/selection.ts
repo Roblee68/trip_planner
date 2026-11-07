@@ -11,10 +11,12 @@ export function parseScoutRequest(value: unknown): ScoutRequest {
   const maxBudget = Number(data.maxBudget);
   const maxDistanceKm = Number(data.maxDistanceKm);
   const interests = Array.isArray(data.interests) ? data.interests.filter((x): x is string => typeof x === 'string').slice(0, 12) : [];
+  const topics = Array.isArray(data.topics) ? data.topics.filter((x): x is string => typeof x === 'string' && x.length <= 40).slice(0, 40) : [];
+  const travelModes = Array.isArray(data.travelModes) ? data.travelModes.filter((x): x is string => typeof x === 'string' && ['walk', 'transit', 'train', 'car', 'plane', 'ferry', 'boat'].includes(x)).slice(0, 7) : [];
   const refinement = ['balanced', 'different', 'cheaper', 'closer'].includes(String(data.refinement)) ? data.refinement as ScoutRequest['refinement'] : 'balanced';
   if (!prompt || prompt.length > 500 || place.length < 3 || place.length > 120 || !/^[A-Z]{3}$/.test(currency) || !Number.isFinite(maxBudget) || maxBudget < 0 || maxBudget > 10000 || !Number.isFinite(maxDistanceKm) || maxDistanceKm < 0 || maxDistanceKm > 500) throw new Error('Invalid discovery request');
   if ((latitude === undefined) !== (longitude === undefined) || (latitude !== undefined && (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude! < -180 || longitude! > 180))) throw new Error('Invalid location');
-  return { prompt, place, currency, latitude, longitude, maxBudget, maxDistanceKm, interests, refinement };
+  return { prompt, place, currency, latitude, longitude, maxBudget, maxDistanceKm, interests, topics, travelModes, refinement };
 }
 
 export function distanceKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
@@ -58,7 +60,7 @@ export function finalizeResponse(raw: { message: string; picks: { id: string; re
     const item = byId.get(suggestion.id);
     if (!item || seen.has(item.id) || picks.length === 3) continue;
     seen.add(item.id);
-    picks.push({ id: item.id, title: item.title, category: item.category, summary: item.summary, listedAt: item.listedAt, startsAt: item.startsAt, durationHours: item.durationHours, totalCost: item.totalCost, currency: item.currency, distanceKm: item.distanceKm, location: item.location, place: item.place, sourceUrl: item.sourceUrl, verifiedAt: item.verifiedAt, mode: item.mode, reason: suggestion.reason.trim().slice(0, 180) });
+    picks.push({ id: item.id, title: item.title, category: item.category, summary: item.summary, listedAt: item.listedAt, startsAt: item.startsAt, signupBy: item.signupBy ?? null, status: item.status, durationHours: item.durationHours, totalCost: item.totalCost, currency: item.currency, distanceKm: item.distanceKm, location: item.location, place: item.place, sourceUrl: item.sourceUrl, verifiedAt: item.verifiedAt, mode: item.mode, reason: suggestion.reason.trim().slice(0, 180) });
   }
   return { message: raw.message.trim().slice(0, 260), picks, followUp: raw.followUp?.trim().slice(0, 140) || null, mode: allowed[0]?.mode ?? 'sample' };
 }

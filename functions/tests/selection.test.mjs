@@ -11,6 +11,12 @@ test('accepts a location and currency without assuming Toronto or CAD', () => {
   assert.ok(distanceKm(48.8566, 2.3522, 51.5074, -0.1278) > 300);
 });
 
+test('accepts selected specific interests and travel modes', () => {
+  const selected = parseScoutRequest({ prompt: 'Find a pottery class', place: 'Paris, France', currency: 'EUR', maxBudget: 50, maxDistanceKm: 30, interests: ['Arts'], topics: ['Pottery', 'Classes'], travelModes: ['train', 'ferry', 'unknown'] });
+  assert.deepEqual(selected.topics, ['Pottery', 'Classes']);
+  assert.deepEqual(selected.travelModes, ['train', 'ferry']);
+});
+
 test('keeps only local, within-budget, open, source-linked events', () => {
   const items = [event('fit'), event('paid', { totalCost: 25 }), event('other city', { place: 'London, UK' }), event('wrong currency', { currency: 'GBP' }), event('sold out', { status: 'full' }), event('no link', { sourceUrl: null }), event('stale', { verifiedAt: new Date(Date.now() - 72 * 3_600_000).toISOString() })];
   assert.deepEqual(eligibleCandidates(items, request).map(item => item.id), ['fit']);

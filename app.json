@@ -17,6 +17,19 @@
     "web": {
       "name": "PB&B"
     },
-    "plugins": ["./plugins/withPodMinimum"]
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
+        }
+      ],
+      "./plugins/withPodMinimum",
+      "expo-status-bar",
+      ["expo-location", { "locationWhenInUsePermission": "Allow PB&B to find your nearby city and suggest experiences when you ask." }],
+      "./plugins/withLocalNotificationsOnly"
+    ]
   }
 }
