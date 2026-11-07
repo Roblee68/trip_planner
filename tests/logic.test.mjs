@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { defaultPreferences, daysFromNow, matchedTopics, opportunityAlerts, rankExperiences } from '../src/logic.ts';
+import { defaultPreferences, daysFromNow, interestTopics, matchedTopics, opportunityAlerts, rankExperiences, topicGroups } from '../src/logic.ts';
 
 const item = (id, category, cost, km, starts, listed = -1) => ({
   id, title: id, category, format: 'Workshop', summary: '', location: 'Toronto', distanceKm: km,
@@ -39,4 +39,20 @@ test('specific interests match activities and selected travel modes limit the fe
   const settings = { ...defaultPreferences, interests: [], topics: ['Pottery'], travelModes: ['transit'] };
   assert.deepEqual(rankExperiences([pottery], settings, {}, []).map(value => value.id), [pottery.id]);
   assert.deepEqual(rankExperiences([pottery], { ...settings, travelModes: ['car'] }, {}, []), []);
+});
+
+test('expanded interests are unique and forests and metalwork match relevant ideas', () => {
+  assert.equal(interestTopics.length, 66);
+  assert.equal(new Set(topicGroups.flatMap(group => group.topics)).size, interestTopics.length);
+  assert.ok(topicGroups.find(group => group.label === 'Nature and discovery').topics.includes('Forests'));
+  assert.ok(topicGroups.find(group => group.label === 'Make, learn and browse').topics.includes('Art'));
+  assert.deepEqual(matchedTopics({ ...item('Forest walk and blacksmith workshop', 'Learning', 20, 5, 4), tags: ['forge'] }, ['Forests', 'Metalwork', 'Pottery']), ['Forests', 'Metalwork']);
+});
+
+test('open to new ideas lifts an unfamiliar category without creating an alert interest', () => {
+  const food = item('street food', 'Food', 10, 5, 5);
+  const normal = { ...defaultPreferences, topics: [] };
+  const open = { ...normal, topics: ['Open to new ideas'] };
+  assert.equal(opportunityAlerts([food], open, {}, []).length, 0);
+  assert.ok(rankExperiences([food], open, {}, []).length);
 });

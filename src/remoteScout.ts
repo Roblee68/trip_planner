@@ -3,7 +3,7 @@ import { getAuth, signInAnonymously } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Category, Experience, Preferences } from './logic';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
@@ -20,7 +20,8 @@ type Pick = {
   location: string; place: string; sourceUrl: string | null; verifiedAt: string | null;
   mode: 'sample' | 'live'; reason: string;
 };
-type ScoutResponse = { message: string; picks: Pick[]; followUp: string | null; mode: 'sample' | 'live' };
+export type ScoutCitation = { startIndex: number; endIndex: number; url: string; title: string };
+type ScoutResponse = { message: string; picks: Pick[]; followUp: string | null; mode: 'sample' | 'live' | 'web'; citations?: ScoutCitation[] };
 
 export function pickToExperience(pick: Pick): Experience {
   const category: Category = validCategories.includes(pick.category as Category) ? pick.category as Category : 'Learning';

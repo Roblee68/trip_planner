@@ -17,6 +17,11 @@ test('accepts selected specific interests and travel modes', () => {
   assert.deepEqual(selected.travelModes, ['train', 'ferry']);
 });
 
+test('treats mile limits in a scout prompt as kilometres internally', () => {
+  const miles = parseScoutRequest({ prompt: 'Within 10 miles', place: 'Paris, France', currency: 'EUR', maxBudget: 50, maxDistanceKm: 30 });
+  assert.deepEqual(eligibleCandidates([event('near', { distanceKm: 15 }), event('far', { distanceKm: 18 })], miles).map(item => item.id), ['near']);
+});
+
 test('keeps only local, within-budget, open, source-linked events', () => {
   const items = [event('fit'), event('paid', { totalCost: 25 }), event('other city', { place: 'London, UK' }), event('wrong currency', { currency: 'GBP' }), event('sold out', { status: 'full' }), event('no link', { sourceUrl: null }), event('stale', { verifiedAt: new Date(Date.now() - 72 * 3_600_000).toISOString() })];
   assert.deepEqual(eligibleCandidates(items, request).map(item => item.id), ['fit']);

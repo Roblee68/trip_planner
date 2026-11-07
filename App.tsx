@@ -4,14 +4,17 @@ import * as Location from 'expo-location';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ImageBackground, Linking, ScrollView, StyleSheet, Text, TextInput, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { categories, daysUntil, defaultPreferences, money, opportunityAlerts, rankExperiences, type Category, type Experience, type Feedback, type Preferences, type InterestTopic, type TravelMode, matchedTopics, topicGroups, travelModeLabels, travelModes } from './src/logic';
+import { categories, daysUntil, defaultPreferences, interestTopics, money, opportunityAlerts, rankExperiences, type Category, type Experience, type Feedback, type Preferences, type InterestTopic, type TravelMode, matchedTopics, topicGroups, travelModeLabels, travelModes } from './src/logic';
+import { currencyForCountry, currencyName, currencyOptions } from './src/currencies';
+import { formatDistance, fromKilometres, toKilometres } from './src/units';
 import { catalog } from './src/catalog';
 import { sampleExperiences } from './src/sampleData';
 import { chooseSerendipity } from './src/serendipity';
 import { planReminders } from './src/reminders';
-import { phoneAlertsAllowed, requestPhoneAlerts, sendSampleAlert, syncPhoneReminders } from './src/phoneAlerts';
+import { listenForSourceTaps, phoneAlertsAllowed, requestPhoneAlerts, sendSampleAlert, syncPhoneReminders } from './src/phoneAlerts';
+import { dailyScoutConfigured, getDailyPushToken, saveDailyScoutSubscription } from './src/dailyScout';
 import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/agent';
-import { askRemoteScout, pickToExperience, remoteScoutConfigured } from './src/remoteScout';
+import { askRemoteScout, pickToExperience, remoteScoutConfigured, type ScoutCitation } from './src/remoteScout';
 
 type Tab = 'Discover' | 'Now' | 'Along the Way' | 'Saved' | 'Settings';
 type StoredState = { preferences: Preferences; feedback: Feedback; savedIds: string[]; savedItems: Experience[] };
@@ -42,7 +45,20 @@ function formatDate(date: string) {
   return new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function Card({ item, saved, loved, onOpen, onSave, onLove, onPass }: { item: Experience; saved: boolean; loved: boolean; onOpen: () => void; onSave: () => void; onLove: () => void; onPass: () => void }) {
+function CitedScoutText({ message, citations }: { message: string; citations: ScoutCitation[] }) {
+  let cursor = 0;
+  const parts: React.ReactNode[] = [];
+  for (const [index, citation] of citations.entries()) {
+    if (citation.startIndex < cursor || citation.endIndex > message.length) continue;
+    parts.push(<Text key={`text-${index}`}>{message.slice(cursor, citation.startIndex)}</Text>);
+    parts.push(<Text key={`link-${index}`} style={styles.alertLink} onPress={() => { void Linking.openURL(citation.url); }}>{message.slice(citation.startIndex, citation.endIndex)}</Text>);
+    cursor = citation.endIndex;
+  }
+  parts.push(<Text key="end">{message.slice(cursor)}</Text>);
+  return <View style={styles.notice}><Text style={styles.summary}>{parts}</Text><Text style={styles.helper}>Open each cited source and confirm details before making plans.</Text></View>;
+}
+
+function Card({ item, saved, loved, distanceUnit, onOpen, onSave, onLove, onPass }: { item: Experience; saved: boolean; loved: boolean; distanceUnit: Preferences['distanceUnit']; onOpen: () => void; onSave: () => void; onLove: () => void; onPass: () => void }) {
   const artInk = item.accent === '#103D46' ? '#F5F8F7' : '#103D46';
   const sampleImage = item.mode === 'live' ? undefined : sampleImages[item.id];
   const checked = item.verifiedAt ? Date.parse(item.verifiedAt) : NaN;
@@ -52,7 +68,7 @@ function Card({ item, saved, loved, onOpen, onSave, onLove, onPass }: { item: Ex
     <View style={styles.cardBody}>
       <View style={styles.rowBetween}><Text style={styles.eyebrow}>{item.mode === 'live' ? checkedRecently ? 'Source checked recently' : 'Recheck source' : 'Sample'} · {item.format} · {formatDate(item.startsAt)}</Text><Text style={styles.cost}>{money(item.totalCost, item.currency)}</Text></View>
       <Text style={styles.cardTitle}>{item.title}</Text>
-      <Text style={styles.cardMeta}>{item.location}{item.place ? ` · ${item.place}` : ''} · {item.distanceKm} km · {item.durationHours} hr</Text>
+      <Text style={styles.cardMeta}>{item.location}{item.place ? ` · ${item.place}` : ''} · {formatDistance(item.distanceKm, distanceUnit)} · {item.durationHours} hr</Text>
       {item.signupBy && <Text style={styles.deadlineText}>{item.mode === 'live' ? 'Listed sign-up by' : 'Sample sign-up by'} {formatDate(item.signupBy)} · check source</Text>}
       <Text style={styles.summary} numberOfLines={2}>{item.summary}</Text>
       <View style={styles.cardActions}>
@@ -81,6 +97,10 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [showMoreIdeas, setShowMoreIdeas] = useState(false);
   const [topicsOpen, setTopicsOpen] = useState(false);
+  const [topicGroupOpen, setTopicGroupOpen] = useState<string | null>(null);
+  const [currencyOpen, setCurrencyOpen] = useState(false);
+  const [currencyQuery, setCurrencyQuery] = useState('');
+  const [suggestedCurrency, setSuggestedCurrency] = useState<string | undefined>();
   const [serendipityOpen, setSerendipityOpen] = useState(false);
   const [travelMode, setTravelMode] = useState<TravelMode>('walk');
   const [serendipityPick, setSerendipityPick] = useState<Experience | null>(null);
@@ -96,8 +116,10 @@ export default function App() {
   const [remoteItems, setRemoteItems] = useState<Experience[]>([]);
   const [scoutLoading, setScoutLoading] = useState(false);
   const [scoutMessage, setScoutMessage] = useState('');
+  const [scoutCitations, setScoutCitations] = useState<ScoutCitation[]>([]);
   const [autoScoutStatus, setAutoScoutStatus] = useState('');
   const [phoneAlertMessage, setPhoneAlertMessage] = useState('');
+  const [dailyScoutMessage, setDailyScoutMessage] = useState('');
   const [locationMessage, setLocationMessage] = useState('');
   const [locationBusy, setLocationBusy] = useState(false);
   const [locationDenied, setLocationDenied] = useState(false);
@@ -106,7 +128,7 @@ export default function App() {
     AsyncStorage.getItem(STORAGE_KEY).then(raw => {
       if (raw) {
         const saved = JSON.parse(raw) as Partial<StoredState>;
-        if (saved.preferences) setPreferences({ ...defaultPreferences, ...saved.preferences, interests: Array.isArray(saved.preferences.interests) ? saved.preferences.interests : defaultPreferences.interests, topics: Array.isArray(saved.preferences.topics) ? saved.preferences.topics : [], travelModes: Array.isArray(saved.preferences.travelModes) ? saved.preferences.travelModes : defaultPreferences.travelModes, place: saved.preferences.place || 'Toronto, Canada' });
+        if (saved.preferences) setPreferences({ ...defaultPreferences, ...saved.preferences, interests: Array.isArray(saved.preferences.interests) ? saved.preferences.interests : defaultPreferences.interests, topics: Array.isArray(saved.preferences.topics) ? saved.preferences.topics.filter((topic): topic is InterestTopic => interestTopics.includes(topic as InterestTopic)) : [], travelModes: Array.isArray(saved.preferences.travelModes) ? saved.preferences.travelModes : defaultPreferences.travelModes, distanceUnit: saved.preferences.distanceUnit === 'mi' ? 'mi' : 'km', place: saved.preferences.place || 'Toronto, Canada' });
         if (saved.feedback) setFeedback(saved.feedback);
         if (saved.savedIds) setSavedIds(saved.savedIds);
         if (Array.isArray(saved.savedItems)) setSavedItems(saved.savedItems.filter(item => item?.mode === 'live' && typeof item.id === 'string' && item.sourceUrl?.startsWith('https://')).slice(0, 100));
@@ -116,6 +138,7 @@ export default function App() {
   useEffect(() => {
     if (hydrated) AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ preferences, feedback, savedIds, savedItems })).catch(() => {});
   }, [preferences, feedback, savedIds, savedItems, hydrated]);
+  useEffect(() => { const subscription = listenForSourceTaps(); return () => subscription.remove(); }, []);
   useEffect(() => {
     catalog.load().then(result => setExperiences(result.items)).catch(() => setExperiences([])).finally(() => setCatalogLoading(false));
   }, []);
@@ -132,7 +155,7 @@ export default function App() {
   const ranked = useMemo(() => rankExperiences(allItems, preferences, feedback, savedIds), [allItems, preferences, feedback, savedIds]);
   const alerts = useMemo(() => opportunityAlerts(allItems, preferences, feedback, savedIds), [allItems, preferences, feedback, savedIds]);
   useEffect(() => {
-    if (!hydrated || !remoteScoutConfigured || !preferences.place.includes(',') || !/^[A-Z]{3}$/.test(preferences.currency)) return;
+    if (!hydrated || !remoteScoutConfigured || process.env.EXPO_PUBLIC_PBB_AUTO_SCOUT !== '1' || !preferences.place.includes(',') || !/^[A-Z]{3}$/.test(preferences.currency)) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       setAutoScoutStatus('Your scout is checking for ideas…');
@@ -155,6 +178,18 @@ export default function App() {
     }).catch(() => { if (!cancelled) setPhoneAlertMessage('Phone reminders could not be updated.'); });
     return () => { cancelled = true; };
   }, [hydrated, allItems, preferences, feedback, savedIds]);
+  useEffect(() => {
+    if (!hydrated || !dailyScoutConfigured || !preferences.dailyScoutEnabled) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        if (!(await phoneAlertsAllowed())) return;
+        const token = await getDailyPushToken();
+        if (!cancelled) await saveDailyScoutSubscription(true, preferences, token);
+      } catch { if (!cancelled) setDailyScoutMessage('Daily scout settings could not be updated.'); }
+    }, 1200);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [hydrated, preferences.dailyScoutEnabled, preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests.join(','), preferences.topics.join(','), preferences.travelModes.join(',')]);
   const agentSuggestions = useMemo(() => remoteScoutConfigured ? remoteSuggestions.map(suggestion => ({ item: suggestion.item, reasons: [suggestion.reason] })) : activeRequest === null ? [] : recommendForIntent(localExamples, preferences, feedback, savedIds, interpretIntent(activeRequest), agentMode).slice(0, 3), [localExamples, preferences, feedback, savedIds, activeRequest, agentMode, remoteSuggestions]);
   const visible = ranked.filter(item => (category === 'All' || item.category === category) && (!query || `${item.title} ${item.category} ${item.tags.join(' ')} ${item.location}`.toLowerCase().includes(query.toLowerCase())));
   const diverse = showDiverse ? [...visible].sort((a, b) => Number(preferences.interests.includes(a.category)) - Number(preferences.interests.includes(b.category))) : visible;
@@ -168,8 +203,8 @@ export default function App() {
   };
   const fitReason = (item: Experience) => {
     const topic = matchedTopics(item, preferences.topics ?? [])[0];
-    return topic ? `FITS YOUR ${topic.toUpperCase()} INTEREST · ${money(item.totalCost, item.currency)} · ${item.distanceKm} KM`
-      : preferences.interests.includes(item.category) ? `FITS YOUR ${item.category.toUpperCase()} INTEREST · ${money(item.totalCost, item.currency)} · ${item.distanceKm} KM`
+    return topic ? `FITS YOUR ${topic.toUpperCase()} INTEREST · ${money(item.totalCost, item.currency)} · ${formatDistance(item.distanceKm, preferences.distanceUnit).toUpperCase()}`
+      : preferences.interests.includes(item.category) ? `FITS YOUR ${item.category.toUpperCase()} INTEREST · ${money(item.totalCost, item.currency)} · ${formatDistance(item.distanceKm, preferences.distanceUnit).toUpperCase()}`
       : `A FRESH IDEA WITHIN YOUR ${preferences.maxBudget} ${preferences.currency} BUDGET`;
   };
   const togglePhoneAlerts = async () => {
@@ -179,6 +214,22 @@ export default function App() {
       if (allowed) { setPreferences(current => ({ ...current, phoneAlertsEnabled: true })); setPhoneAlertMessage('Phone reminders are on for verified matches.'); }
       else setPhoneAlertMessage('Allow notifications in your phone settings to turn on reminders.');
     } catch { setPhoneAlertMessage('Phone notifications could not be enabled.'); }
+  };
+  const toggleDailyScout = async () => {
+    if (!dailyScoutConfigured) { setDailyScoutMessage('Daily alerts are not connected yet. The live feed and phone push setup are still being prepared.'); return; }
+    try {
+      if (preferences.dailyScoutEnabled) {
+        await saveDailyScoutSubscription(false, preferences);
+        setPreferences(current => ({ ...current, dailyScoutEnabled: false }));
+        setDailyScoutMessage('Daily scout alerts are off.');
+        return;
+      }
+      if (!(await requestPhoneAlerts())) { setDailyScoutMessage('Allow notifications in your phone settings to turn on daily alerts.'); return; }
+      const token = await getDailyPushToken();
+      await saveDailyScoutSubscription(true, preferences, token);
+      setPreferences(current => ({ ...current, dailyScoutEnabled: true }));
+      setDailyScoutMessage('Daily scout alerts are on. The app will check for sourced weekend ideas and sign-up deadlines.');
+    } catch { setDailyScoutMessage('Daily alerts could not be connected. Check the live service and push credentials.'); }
   };
   const useCurrentLocation = async () => {
     setLocationBusy(true);
@@ -197,8 +248,10 @@ export default function App() {
       const country = address?.country;
       if (!city || !country) throw new Error('No nearby city found');
       const place = `${city}, ${country}`;
-      setPreferences(current => ({ ...current, place }));
-      setLocationMessage(`Exploring near ${place}. Check the currency below before searching.`);
+      const localCurrency = currencyForCountry(address.isoCountryCode);
+      setSuggestedCurrency(localCurrency);
+      setPreferences(current => ({ ...current, place, currency: localCurrency ?? current.currency }));
+      setLocationMessage(localCurrency ? `Exploring near ${place}. ${localCurrency} was selected from your location; you can change it below.` : `Exploring near ${place}. Choose a currency below.`);
     } catch {
       setLocationMessage('We could not find a nearby city. You can still enter one below.');
     } finally {
@@ -213,15 +266,20 @@ export default function App() {
   const toggleInterest = (value: Category) => setPreferences(current => ({ ...current, interests: current.interests.includes(value) ? current.interests.filter(item => item !== value) : [...current.interests, value] }));
   const toggleTopic = (value: InterestTopic) => setPreferences(current => ({ ...current, topics: current.topics.includes(value) ? current.topics.filter(item => item !== value) : [...current.topics, value] }));
   const toggleTravel = (value: TravelMode) => setPreferences(current => ({ ...current, travelModes: current.travelModes.includes(value) ? current.travelModes.filter(item => item !== value) : [...current.travelModes, value] }));
-  const setNumber = (key: 'maxBudget' | 'maxDistanceKm', value: string) => {
+  const setNumber = (key: 'maxBudget', value: string) => {
     const number = Number(value.replace(/[^0-9]/g, ''));
     setPreferences(current => ({ ...current, [key]: Number.isFinite(number) ? number : 0 }));
+  };
+  const setRadius = (value: string) => {
+    const number = Number(value.replace(/[^0-9]/g, ''));
+    setPreferences(current => ({ ...current, maxDistanceKm: Math.max(0, Math.min(500, toKilometres(Number.isFinite(number) ? number : 0, current.distanceUnit))) }));
   };
   const runScout = async (prompt: string, refinement: DiscoveryMode = 'balanced') => {
     setActiveRequest(prompt);
     setAgentMode(refinement);
     setScoutMessage('');
-    if (!remoteScoutConfigured) return;
+    setScoutCitations([]);
+    if (!remoteScoutConfigured) { setScoutMessage('Preview mode: showing matching sample ideas below. Live AI search is not connected yet.'); return; }
     if (!preferences.place.trim() || !/^[A-Z]{3}$/.test(preferences.currency)) { setScoutMessage('Enter a city, country, and three-letter currency in Settings first.'); return; }
     setScoutLoading(true);
     try {
@@ -230,12 +288,13 @@ export default function App() {
       setRemoteSuggestions(suggestions);
       setRemoteItems(current => [...suggestions.map(suggestion => suggestion.item), ...current.filter(item => !suggestions.some(suggestion => suggestion.item.id === item.id))]);
       setScoutMessage(result.message);
+      setScoutCitations(result.citations ?? []);
     } catch (error) {
       setRemoteSuggestions([]);
       setScoutMessage(error instanceof Error ? `The scout is unavailable: ${error.message}` : 'The scout is unavailable. Please try again.');
     } finally { setScoutLoading(false); }
   };
-  const itemCard = (item: Experience) => <Card key={item.id} item={item} saved={savedIds.includes(item.id)} loved={feedback[item.id] === 'love'} onOpen={() => setSelected(item)} onSave={() => toggleSaved(item)} onLove={() => setFeedback(current => { const next = { ...current }; if (next[item.id] === 'love') delete next[item.id]; else next[item.id] = 'love'; return next; })} onPass={() => { setFeedback(current => ({ ...current, [item.id]: 'pass' })); setSavedIds(current => current.filter(id => id !== item.id)); setSavedItems(current => current.filter(value => value.id !== item.id)); setLastPassed({ item, wasSaved: savedIds.includes(item.id) }); }} />;
+  const itemCard = (item: Experience) => <Card key={item.id} item={item} distanceUnit={preferences.distanceUnit} saved={savedIds.includes(item.id)} loved={feedback[item.id] === 'love'} onOpen={() => setSelected(item)} onSave={() => toggleSaved(item)} onLove={() => setFeedback(current => { const next = { ...current }; if (next[item.id] === 'love') delete next[item.id]; else next[item.id] = 'love'; return next; })} onPass={() => { setFeedback(current => ({ ...current, [item.id]: 'pass' })); setSavedIds(current => current.filter(id => id !== item.id)); setSavedItems(current => current.filter(value => value.id !== item.id)); setLastPassed({ item, wasSaved: savedIds.includes(item.id) }); }} />;
   const undoPass = () => {
     if (!lastPassed) return;
     setFeedback(current => { const next = { ...current }; delete next[lastPassed.item.id]; return next; });
@@ -254,7 +313,7 @@ export default function App() {
         {selected.mode !== 'live' && sampleImages[selected.id] ? <ImageBackground source={sampleImages[selected.id]} style={styles.detailPhoto}><Text style={styles.photoLabel}>ILLUSTRATIVE PHOTO</Text></ImageBackground> : <View style={[styles.detailArt, { backgroundColor: selected.accent }]}><Text style={[styles.detailGlyph, { color: selected.accent === '#103D46' ? '#F5F8F7' : '#103D46' }]}>✦</Text><Text style={[styles.detailCategory, { color: selected.accent === '#103D46' ? '#F5F8F7' : '#103D46' }]}>{selected.category.toUpperCase()}</Text></View>}
         <Text style={styles.eyebrow}>{selected.format} · {formatDate(selected.startsAt)}</Text>
         <Text style={styles.h1}>{selected.title}</Text><Text style={styles.lead}>{selected.summary}</Text>
-        <View style={styles.infoPanel}><Text style={styles.infoText}>⌖  {selected.location} · about {selected.distanceKm} km from {selected.mode === 'live' ? preferences.place : 'Toronto'}</Text><Text style={styles.infoText}>◷  Starts {formatDate(selected.startsAt)} · {selected.durationHours} hours</Text><Text style={styles.infoText}>$  {money(selected.totalCost, selected.currency)} listed cost</Text></View>
+        <View style={styles.infoPanel}><Text style={styles.infoText}>⌖  {selected.location} · about {formatDistance(selected.distanceKm, preferences.distanceUnit)} from {selected.mode === 'live' ? preferences.place : 'Toronto'}</Text><Text style={styles.infoText}>◷  Starts {formatDate(selected.startsAt)} · {selected.durationHours} hours</Text><Text style={styles.infoText}>$  {money(selected.totalCost, selected.currency)} listed cost</Text></View>
         <Text style={styles.notice}>Before leaving, confirm the date, time, price, availability, weather policy and location with the organizer. Activities can fill, sell out, close or change without notice. PB&B and AI can make mistakes.</Text>
         {selected.mode === 'live' && selected.sourceUrl?.startsWith('https://') ? <Action label="Check the listing source ↗" onPress={() => Linking.openURL(selected.sourceUrl!)} /> : <Text style={styles.notice}>This is a sample idea without a verified source or booking link.</Text>}
         {selected.mode === 'live' && selected.verifiedAt ? <Text style={styles.helper}>Source last checked {formatDate(selected.verifiedAt)}. Confirm current details with the organizer.</Text> : null}
@@ -268,15 +327,16 @@ export default function App() {
         {searchOpen && <View style={styles.searchPanel}>
           <TextInput value={query} onChangeText={setQuery} placeholder="Search ideas: dance, pottery, outdoors…" placeholderTextColor="#6C8285" style={styles.search} returnKeyType="search" />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}><Pill label="All" active={category === 'All'} onPress={() => setCategory('All')} />{categories.map(value => <Pill key={value} label={value} active={category === value} onPress={() => setCategory(value)} />)}</ScrollView>
-          <View style={styles.agentPanel}><Text style={styles.agentKicker}>✦ YOUR PERSONAL SCOUT</Text><Text style={styles.agentTitle}>What are you up for?</Text><Text style={styles.agentLead}>Try a free hour, a new skill, or a little adventure.</Text>
+          <View style={styles.agentPanel}><Text style={styles.agentKicker}>✦ YOUR PERSONAL SCOUT</Text><Text style={styles.agentTitle}>What are you up for?</Text><Text style={styles.agentLead}>{remoteScoutConfigured ? 'Try a free hour, a new skill, or a little adventure.' : 'Preview mode: this searches sample ideas. Live AI is not connected yet.'}</Text>
             <TextInput value={agentPrompt} onChangeText={setAgentPrompt} onSubmitEditing={() => runScout(agentPrompt)} placeholder="Try “free dance class this weekend”" placeholderTextColor="#68868B" style={styles.agentInput} returnKeyType="search" />
             <Action label="Find ideas" onPress={() => runScout(agentPrompt)} />
+            {scoutMessage ? <Text style={styles.helper}>{scoutCitations.length ? 'Source-linked ideas are below.' : scoutMessage}</Text> : null}
             <View style={styles.promptRow}>{['Free this weekend', 'Something creative', 'Surprise me'].map(prompt => <Pressable key={prompt} onPress={() => { setAgentPrompt(prompt); runScout(prompt); }} style={styles.promptChip}><Text style={styles.promptText}>{prompt}</Text></Pressable>)}</View>
           </View>
           {activeRequest !== null && <View style={styles.agentResults}><View style={styles.rowBetween}><Text style={styles.subheading}>A few ideas for you</Text><Pressable onPress={() => { setActiveRequest(null); setAgentPrompt(''); }}><Text style={styles.clearText}>Clear</Text></Pressable></View>
             <Text style={styles.resultIntro}>{activeRequest.trim() ? `For “${activeRequest.trim()}”` : 'Based on your interests and practical limits'}</Text>
-            {scoutMessage ? <Text style={styles.notice}>{scoutMessage}</Text> : null}
-            {scoutLoading ? <Text style={styles.notice}>Your scout is looking…</Text> : agentSuggestions.length ? agentSuggestions.map(suggestion => <View key={suggestion.item.id}><Text style={styles.whyText}>WHY IT FITS · {suggestion.reasons.join(' · ')}</Text>{itemCard(suggestion.item)}</View>) : <View style={styles.empty}><Text style={styles.emptyTitle}>{showingTorontoSamples && !remoteScoutConfigured ? 'No close match in these sample ideas.' : `No verified match for ${preferences.place} yet.`}</Text><Text style={styles.summary}>{showingTorontoSamples && !remoteScoutConfigured ? 'Try another interest, more time, a larger budget, or a wider radius.' : 'Try another interest or adjust your budget or radius. Real listings need verified organizer sources.'}</Text></View>}
+            {scoutCitations.length ? <CitedScoutText message={scoutMessage} citations={scoutCitations} /> : scoutMessage ? <Text style={styles.notice}>{scoutMessage}</Text> : null}
+            {scoutLoading ? <Text style={styles.notice}>Your scout is looking…</Text> : scoutCitations.length ? null : agentSuggestions.length ? agentSuggestions.map(suggestion => <View key={suggestion.item.id}><Text style={styles.whyText}>WHY IT FITS · {suggestion.reasons.join(' · ')}</Text>{itemCard(suggestion.item)}</View>) : <View style={styles.empty}><Text style={styles.emptyTitle}>{showingTorontoSamples && !remoteScoutConfigured ? 'No close match in these sample ideas.' : `No verified match for ${preferences.place} yet.`}</Text><Text style={styles.summary}>{showingTorontoSamples && !remoteScoutConfigured ? 'Try another interest, more time, a larger budget, or a wider radius.' : 'Try another interest or adjust your budget or radius. Real listings need verified organizer sources.'}</Text></View>}
             <View style={styles.chipRow}><Pill label="Something different" active={agentMode === 'different'} onPress={() => runScout(activeRequest, 'different')} /><Pill label="Cheaper" active={agentMode === 'cheaper'} onPress={() => runScout(activeRequest, 'cheaper')} /><Pill label="Closer" active={agentMode === 'closer'} onPress={() => runScout(activeRequest, 'closer')} /></View>
           </View>}
         </View>}
@@ -284,7 +344,7 @@ export default function App() {
         {serendipityOpen && <View style={styles.serendipityPanel}>
           <Text style={styles.label}>How would you get there?</Text><View style={styles.chipRow}>{(preferences.travelModes ?? []).map(mode => <Pill key={mode} label={travelModeLabels[mode]} active={travelMode === mode} onPress={() => { setTravelMode(mode); setSerendipityPick(null); setSerendipityTried(false); }} />)}</View>
           {!preferences.travelModes.length && <Text style={styles.notice}>Choose a way to travel in Settings first.</Text>}
-          <Text style={styles.serendipityRule}>{travelMode === 'walk' ? 'A nearby surprise, within 5 km.' : travelMode === 'plane' ? 'Only activities with a verified flight shorter than two hours from your chosen city.' : `A surprise within 100 km. Check the ${travelMode === 'train' ? 'train route' : travelMode === 'ferry' || travelMode === 'boat' ? 'sailing route' : 'route'} before going.`}</Text>
+          <Text style={styles.serendipityRule}>{travelMode === 'walk' ? `A nearby surprise, within ${formatDistance(5, preferences.distanceUnit)}.` : travelMode === 'plane' ? 'Only activities with a verified flight shorter than two hours from your chosen city.' : `A surprise within ${formatDistance(100, preferences.distanceUnit)}. Check the ${travelMode === 'train' ? 'train route' : travelMode === 'ferry' || travelMode === 'boat' ? 'sailing route' : 'route'} before going.`}</Text>
           {travelMode === 'plane' && <ImageBackground source={require('./assets/polar-bear-inspiration.png')} style={styles.planeTeaser} imageStyle={styles.heroImageCorners}><View style={styles.planeTeaserShade}><Text style={styles.planeTeaserKicker}>INSPIRATION ONLY</Text><Text style={styles.planeTeaserTitle}>The kind of story worth travelling for.</Text></View></ImageBackground>}
           {travelMode === 'plane' && <Text style={styles.helper}>Polar bears are an inspiration, not a current trip suggestion. A flight and activity must both be source-checked before they can appear here.</Text>}
           {preferences.travelModes.length > 0 && <Action label="Surprise me" onPress={drawSerendipity} />}
@@ -319,14 +379,22 @@ export default function App() {
         {locationDenied && <Action label="Open phone location settings" onPress={() => { void Linking.openSettings(); }} secondary />}
         {locationMessage ? <Text style={styles.helper}>{locationMessage}</Text> : <Text style={styles.helper}>Location is used only when you tap the button. You can always choose another place.</Text>}
         <TextInput value={preferences.place} onChangeText={place => setPreferences(current => ({ ...current, place }))} placeholder="City and country" placeholderTextColor="#6C8285" style={styles.search} />
-        <Text style={styles.label}>Budget currency · three-letter code</Text><TextInput value={preferences.currency} onChangeText={currency => setPreferences(current => ({ ...current, currency: currency.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase() }))} placeholder="e.g. EUR, JPY, BRL" autoCapitalize="characters" maxLength={3} style={styles.search} />
+        <Pressable onPress={() => setCurrencyOpen(value => !value)} style={styles.searchToggle}><Text style={styles.searchToggleText}>Currency · {preferences.currency} {currencyName(preferences.currency)}</Text><Text style={styles.searchChevron}>{currencyOpen ? '−' : '+'}</Text></Pressable>
+        {suggestedCurrency && <Text style={styles.helper}>Suggested for your current location: {suggestedCurrency}. You can choose any currency.</Text>}
+        {currencyOpen && <View style={styles.searchPanel}>
+          <TextInput value={currencyQuery} onChangeText={setCurrencyQuery} placeholder="Search currency name or code" placeholderTextColor="#6C8285" style={styles.search} autoCapitalize="none" />
+          <View style={styles.chipRow}>{currencyOptions(currencyQuery, preferences.currency, suggestedCurrency).map(code => <Pill key={code} label={`${code} · ${currencyName(code)}`} active={preferences.currency === code} onPress={() => { setPreferences(current => ({ ...current, currency: code })); setCurrencyOpen(false); setCurrencyQuery(''); }} />)}</View>
+          <Text style={styles.helper}>Showing {currencyQuery.trim() ? 'search matches' : 'common currencies'}. Search to find other currencies.</Text>
+        </View>}
         <Text style={styles.subheading}>Interests</Text><View style={styles.chipRow}>{categories.map(value => <Pill key={value} label={value} active={preferences.interests.includes(value)} onPress={() => toggleInterest(value)} />)}</View>
         <Pressable onPress={() => setTopicsOpen(value => !value)} style={styles.searchToggle}><Text style={styles.searchToggleText}>Specific interests · {preferences.topics.length} selected</Text><Text style={styles.searchChevron}>{topicsOpen ? '−' : '+'}</Text></Pressable>
-        {topicsOpen && topicGroups.map(group => <View key={group.label}><Text style={styles.label}>{group.label}</Text><View style={styles.chipRow}>{group.topics.map(topic => <Pill key={topic} label={topic} active={preferences.topics.includes(topic)} onPress={() => toggleTopic(topic)} />)}</View></View>)}
+        {topicsOpen && topicGroups.map(group => <View key={group.label}><Pressable onPress={() => setTopicGroupOpen(open => open === group.label ? null : group.label)} style={styles.searchToggle}><Text style={styles.searchToggleText}>{group.label} · {group.topics.filter(topic => preferences.topics.includes(topic)).length}</Text><Text style={styles.searchChevron}>{topicGroupOpen === group.label ? '−' : '+'}</Text></Pressable>{topicGroupOpen === group.label && <View style={styles.chipRow}>{group.topics.map(topic => <Pill key={topic} label={topic} active={preferences.topics.includes(topic)} onPress={() => toggleTopic(topic)} />)}</View>}</View>)}
+        {topicsOpen && <Text style={styles.helper}>“Open to new ideas” lifts surprising picks in Discover; alerts still use your specific interests.</Text>}
         <Text style={styles.subheading}>Ways you like to travel</Text><View style={styles.chipRow}>{travelModes.map(mode => <Pill key={mode} label={travelModeLabels[mode]} active={preferences.travelModes.includes(mode)} onPress={() => toggleTravel(mode)} />)}</View>
         <Text style={styles.helper}>Serendipity uses these choices. Routes and travel times need source checks before you leave.</Text>
         <View style={styles.settingsRow}><View><Text style={styles.label}>Maximum budget</Text><Text style={styles.helper}>Per experience, {preferences.currency}</Text></View><TextInput style={styles.numberInput} keyboardType="number-pad" value={String(preferences.maxBudget)} onChangeText={value => setNumber('maxBudget', value)} /></View>
-        <View style={styles.settingsRow}><View><Text style={styles.label}>Travel radius</Text><Text style={styles.helper}>Kilometres from your chosen place</Text></View><TextInput style={styles.numberInput} keyboardType="number-pad" value={String(preferences.maxDistanceKm)} onChangeText={value => setNumber('maxDistanceKm', value)} /></View>
+        <Text style={styles.subheading}>Distance</Text><View style={styles.chipRow}><Pill label="Kilometres" active={preferences.distanceUnit === 'km'} onPress={() => setPreferences(current => ({ ...current, distanceUnit: 'km' }))} /><Pill label="Miles" active={preferences.distanceUnit === 'mi'} onPress={() => setPreferences(current => ({ ...current, distanceUnit: 'mi' }))} /></View>
+        <View style={styles.settingsRow}><View><Text style={styles.label}>Travel radius</Text><Text style={styles.helper}>{preferences.distanceUnit === 'mi' ? 'Miles' : 'Kilometres'} from your chosen place</Text></View><TextInput style={styles.numberInput} keyboardType="number-pad" value={String(Math.round(fromKilometres(preferences.maxDistanceKm, preferences.distanceUnit)))} onChangeText={setRadius} /></View>
         <Setting label="Show timely in-app alerts" value={preferences.alertsEnabled} onPress={() => setPreferences(current => ({ ...current, alertsEnabled: !current.alertsEnabled }))} />
         <Setting label="Highlight free opportunities" value={preferences.freeAlerts} onPress={() => setPreferences(current => ({ ...current, freeAlerts: !current.freeAlerts }))} />
         <Setting label="Watch saved interests" value={preferences.savedAlerts} onPress={() => setPreferences(current => ({ ...current, savedAlerts: !current.savedAlerts }))} />
@@ -334,8 +402,11 @@ export default function App() {
         <Text style={styles.helper}>When a source-checked match has a sign-up deadline or is coming up soon, your phone can remind you. New finds while the app is closed need a live feed and push service.</Text>
         {phoneAlertMessage ? <Text style={styles.notice}>{phoneAlertMessage}</Text> : null}
         {preferences.phoneAlertsEnabled && <Action label="Try a sample phone alert" onPress={() => { sendSampleAlert().then(() => setPhoneAlertMessage('Sample alert scheduled in five seconds.')).catch(() => setPhoneAlertMessage('The sample alert could not be sent.')); }} secondary />}
+        <Setting label="Daily scout for weekends and sign-up deadlines" value={preferences.dailyScoutEnabled} onPress={() => { void toggleDailyScout(); }} />
+        <Text style={styles.helper}>{dailyScoutConfigured ? 'With your permission, the server checks once each morning for sourced matches and sends at most two alerts.' : 'Daily alerts are being built. This preview cannot send new finds while the app is closed yet.'}</Text>
+        {dailyScoutMessage ? <Text style={styles.notice}>{dailyScoutMessage}</Text> : null}
         <Text style={styles.subheading}>Timely finds</Text>
-        {alerts.length ? alerts.map(alert => <Pressable key={alert.item.id} onPress={() => setSelected(alert.item)} style={styles.alertCard}><Text style={styles.alertTag}>✦ {alert.reason}</Text><Text style={styles.alertTitle}>{alert.item.title}</Text><Text style={styles.cardMeta}>Starts {formatDate(alert.item.startsAt)} · {money(alert.item.totalCost, alert.item.currency)} · {alert.item.distanceKm} km</Text><Text style={styles.alertLink}>See details →</Text></Pressable>) : <View style={styles.empty}><Text style={styles.emptyTitle}>No timely finds right now.</Text><Text style={styles.summary}>Enable alerts and choose interests to see matching sample opportunities.</Text></View>}
+        {alerts.length ? alerts.map(alert => <Pressable key={alert.item.id} onPress={() => setSelected(alert.item)} style={styles.alertCard}><Text style={styles.alertTag}>✦ {alert.reason}</Text><Text style={styles.alertTitle}>{alert.item.title}</Text><Text style={styles.cardMeta}>Starts {formatDate(alert.item.startsAt)} · {money(alert.item.totalCost, alert.item.currency)} · {formatDistance(alert.item.distanceKm, preferences.distanceUnit)}</Text><Text style={styles.alertLink}>See details →</Text></Pressable>) : <View style={styles.empty}><Text style={styles.emptyTitle}>No timely finds right now.</Text><Text style={styles.summary}>Enable alerts and choose interests to see matching sample opportunities.</Text></View>}
         <Text style={styles.notice}>Check each listing source and confirm details with the organizer before leaving. Events can fill, sell out, close due to weather, or change unexpectedly. AI can make mistakes. Opt-in phone reminders work for recently checked live listings already found by the app; new finds while the app is closed need a push service.</Text>
         <Action label="Clear passes and loves" onPress={() => setFeedback({})} secondary />
       </View>}

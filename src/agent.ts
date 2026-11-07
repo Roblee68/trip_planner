@@ -1,4 +1,5 @@
 import { daysUntil, type Category, type Experience, type Feedback, type Preferences } from './logic.ts';
+import { formatDistance, toKilometres } from './units.ts';
 
 export type Intent = {
   budget?: number;
@@ -27,12 +28,12 @@ export function interpretIntent(input: string): Intent {
   const text = input.trim().toLowerCase();
   const money = text.match(/(?:under|below|up to|less than|budget of)?\s*\$\s*(\d+)/);
   const hours = text.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/);
-  const kilometres = text.match(/(?:within|under|up to)?\s*(\d+)\s*(?:km|kilometres?|kilometers?)/);
+  const distance = text.match(/(?:within|under|up to)?\s*(\d+(?:\.\d+)?)\s*(km|kilometres?|kilometers?|mi|miles?)/);
   const category = (Object.keys(categoryTerms) as Category[]).find(key => categoryTerms[key].some(term => text.includes(term)));
-  const keywords = text.replace(/\$\s*\d+|\d+(?:\.\d+)?\s*(?:hours?|hrs?|km|kilometres?|kilometers?)/g, ' ').split(/[^a-z]+/).filter(word => word.length > 2 && !filler.has(word));
+  const keywords = text.replace(/\$\s*\d+|\d+(?:\.\d+)?\s*(?:hours?|hrs?|km|kilometres?|kilometers?|mi|miles?)/g, ' ').split(/[^a-z]+/).filter(word => word.length > 2 && !filler.has(word));
   return {
     budget: money ? Number(money[1]) : undefined,
-    distanceKm: kilometres ? Number(kilometres[1]) : /nearby|close to me|not far/.test(text) ? 15 : undefined,
+    distanceKm: distance ? toKilometres(Number(distance[1]), /^mi/.test(distance[2]) ? 'mi' : 'km') : /nearby|close to me|not far/.test(text) ? 15 : undefined,
     durationHours: hours ? Number(hours[1]) : undefined,
     category,
     freeOnly: /\bfree\b|no cost|without spending/.test(text),
@@ -63,7 +64,7 @@ export function recommendForIntent(items: Experience[], preferences: Preferences
     const reasons = [categoryMatch ? `Matches your interest in ${item.category.toLowerCase()}` : interested ? `Fits your ${item.category.toLowerCase()} interest` : 'A fresh direction to explore'];
     if (item.totalCost === 0) reasons.push('Free to try'); else reasons.push(`Within your $${budget} budget`);
     if (days <= 7) reasons.push(days === 0 ? 'Happening today' : `Starting in ${days} days`);
-    else reasons.push(`${item.distanceKm} km from Toronto`);
+    else reasons.push(`${formatDistance(item.distanceKm, preferences.distanceUnit)} from Toronto`);
     return [{ item, reasons, score }];
   }).sort((a, b) => b.score - a.score || a.item.distanceKm - b.item.distanceKm);
 }

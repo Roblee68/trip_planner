@@ -18,6 +18,8 @@ export type Candidate = {
   verifiedAt: string | null;
   status: 'active' | 'cancelled' | 'full';
   mode: 'sample' | 'live';
+  topics?: string[];
+  travelModes?: string[];
 };
 
 export type ScoutRequest = {
@@ -59,5 +61,6 @@ export type ScoutResponse = {
   message: string;
   picks: ScoutPick[];
   followUp: string | null;
-  mode: 'sample' | 'live';
+  mode: 'sample' | 'live' | 'web';
+  citations?: { startIndex: number; endIndex: number; url: string; title: string }[];
 };

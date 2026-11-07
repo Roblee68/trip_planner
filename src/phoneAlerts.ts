@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import { Linking } from 'react-native';
 import type { ReminderPlan } from './reminders.ts';
 
 Notifications.setNotificationHandler({
@@ -42,5 +43,12 @@ export async function sendSampleAlert(): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     content: { title: 'PB&B preview alert', body: 'A dance class that fits your interests could be starting soon. This is a sample, not a verified event.' },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 5 },
+  });
+}
+
+export function listenForSourceTaps(): Notifications.EventSubscription {
+  return Notifications.addNotificationResponseReceivedListener(response => {
+    const sourceUrl = response.notification.request.content.data?.sourceUrl;
+    if (typeof sourceUrl === 'string' && sourceUrl.startsWith('https://')) void Linking.openURL(sourceUrl);
   });
 }

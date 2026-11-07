@@ -23,6 +23,8 @@ function fromRecord(id: string, value: Record<string, unknown>): Candidate | nul
     longitude: Number.isFinite(number('longitude')) ? number('longitude') : undefined,
     sourceUrl: url || null, verifiedAt: text('verifiedAt') || null,
     status: text('status') as Candidate['status'], mode: 'live',
+    topics: Array.isArray(value.topics) ? value.topics.filter((topic): topic is string => typeof topic === 'string').slice(0, 12) : [],
+    travelModes: Array.isArray(value.travelModes) ? value.travelModes.filter((mode): mode is string => typeof mode === 'string').slice(0, 7) : [],
   };
   if (candidate.signupBy && !Number.isFinite(Date.parse(candidate.signupBy))) return null;
   if (!candidate.title || !candidate.place || !candidate.location || !Number.isFinite(Date.parse(candidate.listedAt)) || !Number.isFinite(Date.parse(candidate.startsAt)) || !Number.isFinite(candidate.totalCost) || !Number.isFinite(candidate.distanceKm) || !Number.isFinite(candidate.durationHours) || !/^[A-Z]{3}$/.test(candidate.currency) || !['active', 'cancelled', 'full'].includes(candidate.status)) return null;

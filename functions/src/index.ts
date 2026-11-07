@@ -5,6 +5,8 @@ import { defineSecret } from 'firebase-functions/params';
 import { loadCandidates } from './catalog.js';
 import { parseScoutRequest } from './selection.js';
 import { scout } from './scout.js';
+import { scoutWeb } from './webScout.js';
+import { dailyOpportunityScan, saveDailyScout } from './dailyService.js';
 
 initializeApp();
 const openaiApiKey = defineSecret('OPENAI_API_KEY');
@@ -28,6 +30,7 @@ export const suggestExperiences = onCall({ region: 'northamerica-northeast2', se
   catch { throw new HttpsError('invalid-argument', 'Please check the request and location.'); }
   await checkDailyLimit(request.auth.uid);
   try {
+    if (process.env.PBB_SCOUT_MODE === 'web') return await scoutWeb(input);
     const candidates = await loadCandidates(input);
     return await scout(input, candidates);
   } catch (error) {
@@ -36,3 +39,10 @@ export const suggestExperiences = onCall({ region: 'northamerica-northeast2', se
     throw new HttpsError('internal', 'The scout could not complete this search. Please try again.');
   }
 });
+
+export const setDailyScout = onCall({ region: 'northamerica-northeast2' }, async request => {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in before changing daily alerts.');
+  return saveDailyScout(request.auth.uid, request.data);
+});
+
+export { dailyOpportunityScan };

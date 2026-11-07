@@ -11,7 +11,7 @@ export function parseScoutRequest(value: unknown): ScoutRequest {
   const maxBudget = Number(data.maxBudget);
   const maxDistanceKm = Number(data.maxDistanceKm);
   const interests = Array.isArray(data.interests) ? data.interests.filter((x): x is string => typeof x === 'string').slice(0, 12) : [];
-  const topics = Array.isArray(data.topics) ? data.topics.filter((x): x is string => typeof x === 'string' && x.length <= 40).slice(0, 40) : [];
+  const topics = Array.isArray(data.topics) ? data.topics.filter((x): x is string => typeof x === 'string' && x.length <= 50).slice(0, 80) : [];
   const travelModes = Array.isArray(data.travelModes) ? data.travelModes.filter((x): x is string => typeof x === 'string' && ['walk', 'transit', 'train', 'car', 'plane', 'ferry', 'boat'].includes(x)).slice(0, 7) : [];
   const refinement = ['balanced', 'different', 'cheaper', 'closer'].includes(String(data.refinement)) ? data.refinement as ScoutRequest['refinement'] : 'balanced';
   if (!prompt || prompt.length > 500 || place.length < 3 || place.length > 120 || !/^[A-Z]{3}$/.test(currency) || !Number.isFinite(maxBudget) || maxBudget < 0 || maxBudget > 10000 || !Number.isFinite(maxDistanceKm) || maxDistanceKm < 0 || maxDistanceKm > 500) throw new Error('Invalid discovery request');
@@ -31,8 +31,8 @@ export function eligibleCandidates(items: Candidate[], request: ScoutRequest, no
   const freeOnly = /\bfree\b|no cost|without spending/i.test(request.prompt);
   const statedBudget = request.prompt.match(/(?:under|below|up to|less than)\s*\$\s*(\d+)/i);
   const budget = freeOnly ? 0 : statedBudget ? Math.min(request.maxBudget, Number(statedBudget[1])) : request.maxBudget;
-  const statedDistance = request.prompt.match(/(?:within|under|up to)\s*(\d+)\s*(?:km|kilometres?|kilometers?)/i);
-  const radius = statedDistance ? Math.min(request.maxDistanceKm, Number(statedDistance[1])) : request.maxDistanceKm;
+  const statedDistance = request.prompt.match(/(?:within|under|up to)\s*(\d+(?:\.\d+)?)\s*(km|kilometres?|kilometers?|mi|miles?)/i);
+  const radius = statedDistance ? Math.min(request.maxDistanceKm, Number(statedDistance[1]) * (/^mi/i.test(statedDistance[2]) ? 1.609344 : 1)) : request.maxDistanceKm;
   const statedHours = request.prompt.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i);
   const maxHours = statedHours ? Number(statedHours[1]) : Infinity;
   return items.flatMap(item => {
