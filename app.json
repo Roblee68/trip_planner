@@ -6,8 +6,17 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "ios": { "supportsTablet": true },
-    "android": { "edgeToEdgeEnabled": true },
-    "web": { "name": "PB&B" }
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.roblee.pbandb",
+      "deploymentTarget": "16.4"
+    },
+    "android": {
+      "package": "com.roblee.pbandb"
+    },
+    "web": {
+      "name": "PB&B"
+    },
+    "plugins": ["./plugins/withPodMinimum"]
   }
 }

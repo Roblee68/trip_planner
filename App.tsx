@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ImageBackground, Linking, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, Pressable, View } from 'react-native';
+import { ImageBackground, Linking, ScrollView, StyleSheet, Text, TextInput, Pressable, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { categories, daysUntil, defaultPreferences, money, opportunityAlerts, rankExperiences, type Category, type Experience, type Feedback, type Preferences } from './src/logic';
 import { catalog } from './src/catalog';
 import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/agent';

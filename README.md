@@ -14,6 +14,18 @@ npm start
 
 The Firebase web app's **public** configuration belongs in `.env`. This repository's Firebase project is `tripplanner-910da` and its web app ID is already in `.env.example`. Get the public Firebase API key from that web app's settings. The local `.env` is ignored by Git. The Toronto sample scout stays available while `EXPO_PUBLIC_PBB_REMOTE_SCOUT=0`; switch it to `1` only after the function and authentication are ready. Other cities show an empty state until a live source is connected.
 
+## Open the native projects
+
+The iOS and Android projects are generated locally from `app.json`, then kept out of Git so the Expo configuration stays the source of truth. On a Mac with Xcode, CocoaPods, and Android Studio installed:
+
+```sh
+npm ci
+npx expo prebuild --platform all --no-install
+cd ios && pod install
+```
+
+Open `ios/PBB.xcworkspace` in Xcode and the `android` directory in Android Studio. `npm run ios` or `npm run android` builds and runs a local debug app. The app identifier is `com.roblee.pbandb`; the icon is provisional. The iOS project uses a small config plugin to keep all pods at the app's iOS 16.4 minimum for Xcode 27 and to quote Expo's build script path because this folder contains `&`. Both local debug builds have been verified. No signing, store submission, or Firebase deployment is part of this setup.
+
 To run the server locally:
 
 ```sh

@@ -12,3 +12,5 @@ functions/lib/
 functions/.secret.local
 .DS_Store
 PB&B_Brand_Guide.pdf
+/ios/
+/android/
