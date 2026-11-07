@@ -28,7 +28,7 @@ async function checkDailyLimit(uid: string) {
   });
 }
 
-export const suggestExperiences = onCall({ region: 'northamerica-northeast2', secrets: [openaiApiKey], timeoutSeconds: 90, memory: '512MiB', maxInstances: 1 }, async request => {
+export const suggestExperiences = onCall({ region: 'northamerica-northeast2', invoker: 'public', secrets: [openaiApiKey], timeoutSeconds: 90, memory: '512MiB', maxInstances: 1 }, async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in before using the scout.');
   if (!openaiApiKey.value()) throw new HttpsError('failed-precondition', 'The scout is not configured yet.');
   let input;
