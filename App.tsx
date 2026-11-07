@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, Pressable, View } from 'react-native';
+import { ImageBackground, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, Pressable, View } from 'react-native';
 import { categories, daysUntil, defaultPreferences, money, opportunityAlerts, rankExperiences, type Category, type Experience, type Feedback, type Preferences } from './src/logic';
 import { catalog } from './src/catalog';
 import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/agent';
@@ -126,6 +126,7 @@ export default function App() {
         <Text style={styles.notice}>Illustrative listing. Schedule, price, availability, and registration have not been verified. No booking link is available yet.</Text>
         <Action label={savedIds.includes(selected.id) ? 'Remove from saved' : 'Save for later'} onPress={() => toggleSaved(selected.id)} />
       </View> : tab === 'Discover' ? <View>
+        <ImageBackground source={require('./assets/discovery-hero.png')} style={styles.heroImage} imageStyle={styles.heroImageCorners}><Text style={styles.heroKicker}>DISCOVER NEARBY</Text><Text style={styles.heroTitle}>{'More life,\nright outside.'}</Text></ImageBackground>
         <View style={styles.agentPanel}><Text style={styles.agentKicker}>✦ YOUR PERSONAL SCOUT</Text><Text style={styles.agentTitle}>What are you in the mood for?</Text><Text style={styles.agentLead}>A free hour, a new skill, a little adventure. Tell PB&B what would feel good.</Text>
           <TextInput value={agentPrompt} onChangeText={setAgentPrompt} onSubmitEditing={() => { setActiveRequest(agentPrompt); setAgentMode('balanced'); }} placeholder="Try “free dance class this weekend”" placeholderTextColor="#85989B" style={styles.agentInput} returnKeyType="search" />
           <Action label="Find my next thing" onPress={() => { setActiveRequest(agentPrompt); setAgentMode('balanced'); }} />
@@ -182,6 +183,7 @@ function Setting({ label, value, onPress }: { label: string; value: boolean; onP
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F8F6F1' }, header: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderColor: '#E6E8E1' },
+  heroImage: { height: 185, borderRadius: 20, padding: 21, justifyContent: 'flex-end', marginBottom: 16, overflow: 'hidden' }, heroImageCorners: { borderRadius: 20 }, heroKicker: { color: '#BDE4D9', fontSize: 10, fontWeight: '900', letterSpacing: 1.6, marginBottom: 7 }, heroTitle: { color: '#FFFFFF', fontSize: 27, fontWeight: '900', lineHeight: 31, letterSpacing: -0.6, maxWidth: 190 },
   agentPanel: { backgroundColor: '#163B48', borderRadius: 23, padding: 22, marginBottom: 26, overflow: 'hidden' }, agentKicker: { color: '#A7DBCE', fontWeight: '900', letterSpacing: 1.4, fontSize: 11, marginBottom: 14 }, agentTitle: { color: '#FFFFFF', fontSize: 29, lineHeight: 34, fontWeight: '900', letterSpacing: -0.7, marginBottom: 8 }, agentLead: { color: '#D3E1DF', fontSize: 14, lineHeight: 20, marginBottom: 18 }, agentInput: { backgroundColor: '#FFFFFF', borderRadius: 12, color: ink, paddingHorizontal: 15, paddingVertical: 13, fontSize: 14, marginBottom: 10 }, promptRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, promptChip: { borderRadius: 18, backgroundColor: '#315967', paddingHorizontal: 11, paddingVertical: 8 }, promptText: { color: '#E2F0EC', fontWeight: '700', fontSize: 11 }, agentResults: { marginBottom: 28 }, resultIntro: { color: muted, fontSize: 13, marginBottom: 15 }, whyText: { color: sea, fontWeight: '800', fontSize: 10, lineHeight: 15, letterSpacing: 0.4, marginBottom: 8 }, clearText: { color: sea, fontWeight: '800', fontSize: 12 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }, welcome: { padding: 24, paddingTop: 52, paddingBottom: 52, maxWidth: 650, width: '100%', alignSelf: 'center' }, welcomeTitle: { color: ink, fontSize: 38, lineHeight: 43, fontWeight: '900', letterSpacing: -1.5, marginBottom: 12 }, undoBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#E6F2EB', borderRadius: 12, padding: 13, marginBottom: 15 }, undoText: { color: ink, fontSize: 12, flex: 1, marginRight: 10 }, undoLink: { color: sea, fontWeight: '800', fontSize: 13 },
   brand: { color: ink, fontWeight: '900', fontSize: 25, letterSpacing: -1.5 }, brandStar: { color: '#E77453' }, brandSub: { color: muted, fontSize: 11, letterSpacing: 0.3 }, avatar: { backgroundColor: '#D9E8E4', height: 38, width: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' }, avatarText: { color: sea, fontWeight: '800', fontSize: 10 },
