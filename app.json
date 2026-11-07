@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "PB&B",
+    "slug": "pb-and-b",
+    "scheme": "pbandb",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": { "supportsTablet": true },
+    "android": { "edgeToEdgeEnabled": true },
+    "web": { "name": "PB&B" }
+  }
+}
