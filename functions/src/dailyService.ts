@@ -2,13 +2,16 @@ import { createHash } from 'node:crypto';
 import { getFirestore } from 'firebase-admin/firestore';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { defineSecret } from 'firebase-functions/params';
 import { loadCandidates } from './catalog.js';
 import { dailyMatches, localClock, type DailyProfile } from './dailyAlerts.js';
 import type { ScoutRequest } from './contracts.js';
+import { discoverWebLeads } from './webDaily.js';
 
 type Subscription = DailyProfile & { pushToken: string; enabled: boolean };
 const TOKEN = /^(?:Expo|Exponent)PushToken\[[A-Za-z0-9_-]+\]$/;
 const MODES = new Set(['walk', 'transit', 'train', 'car', 'plane', 'ferry', 'boat']);
+const openaiApiKey = defineSecret('OPENAI_API_KEY');
 
 export function parseSubscription(input: unknown): Subscription {
   if (!input || typeof input !== 'object') throw new Error('Invalid subscription');
@@ -57,29 +60,38 @@ async function scanSubscriber(uid: string, profile: Subscription, now: Date): Pr
   if (!profile.enabled || !TOKEN.test(profile.pushToken)) return;
   const local = localClock(now, profile.timeZone);
   if (local.hour !== 8) return;
-  const request: ScoutRequest = { ...profile, prompt: 'daily matches', refinement: 'balanced' };
-  const items = await loadCandidates(request);
+  const webMode = process.env.PBB_DISCOVERY_MODE === 'web';
+  const matches = webMode ? (await discoverWebLeads(profile, now)).map(match => ({
+    eventId: createHash('sha256').update(match.lead.sourceUrl).digest('hex'), title: match.lead.title,
+    sourceUrl: match.lead.sourceUrl, startsAt: match.lead.startsAt, kind: match.kind,
+  })) : await (async () => {
+    const request: ScoutRequest = { ...profile, prompt: 'daily matches', refinement: 'balanced' };
+    return dailyMatches(await loadCandidates(request), profile, now).map(match => ({
+      eventId: match.item.id, title: match.item.title, sourceUrl: match.item.sourceUrl!,
+      startsAt: match.item.startsAt, kind: match.kind,
+    }));
+  })();
   let sent = 0;
-  for (const match of dailyMatches(items, profile, now)) {
+  for (const match of matches) {
     if (sent >= 2) break;
-    const id = createHash('sha256').update(`${uid}\0${match.item.id}\0${match.item.startsAt}\0${match.kind}`).digest('hex');
+    const id = createHash('sha256').update(`${uid}\0${match.eventId}\0${match.startsAt}\0${match.kind}`).digest('hex');
     const ref = getFirestore().collection('scoutNotifications').doc(id);
     const reserved = await getFirestore().runTransaction(async transaction => {
       const previous = await transaction.get(ref);
       if (previous.exists && previous.get('status') !== 'failed') return false;
-      transaction.set(ref, { uid, eventId: match.item.id, kind: match.kind, status: 'reserved', sourceUrl: match.item.sourceUrl, createdAt: now.toISOString() });
+      transaction.set(ref, { uid, eventId: match.eventId, kind: match.kind, status: 'reserved', sourceUrl: match.sourceUrl, discoveryMode: webMode ? 'web' : 'catalog', createdAt: now.toISOString() });
       return true;
     });
     if (!reserved) continue;
-    const title = match.kind === 'signup' ? `Sign-up coming up: ${match.item.title}` : `A weekend idea: ${match.item.title}`;
-    const body = match.kind === 'signup' ? 'The listed deadline is near. Check the organizer source before signing up.' : 'This matches your interests. Confirm the time, availability and weather before leaving.';
+    const title = webMode ? `Possible ${match.kind === 'signup' ? 'sign-up' : 'weekend'} idea: ${match.title}` : match.kind === 'signup' ? `Sign-up coming up: ${match.title}` : `A weekend idea: ${match.title}`;
+    const body = webMode ? 'A public source suggests a match. Tap to check the date, cost, availability and weather before making plans.' : match.kind === 'signup' ? 'The listed deadline is near. Check the organizer source before signing up.' : 'This matches your interests. Confirm the time, availability and weather before leaving.';
     try {
-      const ticketId = await sendPush(profile.pushToken, title, body, match.item.sourceUrl!, match.item.id);
+      const ticketId = await sendPush(profile.pushToken, title, body, match.sourceUrl, match.eventId);
       await ref.update({ status: 'ticket', ticketId, pushToken: profile.pushToken, submittedAt: new Date().toISOString() });
       sent += 1;
     } catch (error) {
       await ref.update({ status: 'failed', error: error instanceof Error ? error.message.slice(0, 180) : 'Unknown push error' });
-      console.error('Daily scout push failed', { uid, eventId: match.item.id, error });
+      console.error('Daily scout push failed', { uid, eventId: match.eventId, error });
     }
   }
 }
@@ -112,10 +124,10 @@ async function checkPushReceipts(now: Date): Promise<void> {
   }
 }
 
-export const dailyOpportunityScan = onSchedule({ schedule: '0 * * * *', timeZone: 'UTC', region: 'northamerica-northeast2', timeoutSeconds: 540, memory: '512MiB', maxInstances: 1 }, async () => {
+export const dailyOpportunityScan = onSchedule({ schedule: '0 * * * *', timeZone: 'UTC', region: 'northamerica-northeast2', timeoutSeconds: 540, memory: '512MiB', maxInstances: 1, secrets: [openaiApiKey] }, async () => {
   const now = new Date();
   await checkPushReceipts(now);
-  if (process.env.PBB_CATALOG_MODE !== 'firestore') return;
+  if (process.env.PBB_DISCOVERY_MODE === 'web' ? !openaiApiKey.value() : process.env.PBB_CATALOG_MODE !== 'firestore') return;
   let cursor: FirebaseFirestore.QueryDocumentSnapshot | undefined;
   while (true) {
     let query = getFirestore().collection('scoutSubscriptions').where('enabled', '==', true).orderBy('__name__').limit(50);

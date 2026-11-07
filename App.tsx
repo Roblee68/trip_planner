@@ -216,7 +216,7 @@ export default function App() {
     } catch { setPhoneAlertMessage('Phone notifications could not be enabled.'); }
   };
   const toggleDailyScout = async () => {
-    if (!dailyScoutConfigured) { setDailyScoutMessage('Daily alerts are not connected yet. The live feed and phone push setup are still being prepared.'); return; }
+    if (!dailyScoutConfigured) { setDailyScoutMessage('Daily web scout alerts are not connected yet. The online service and phone push setup are still being prepared.'); return; }
     try {
       if (preferences.dailyScoutEnabled) {
         await saveDailyScoutSubscription(false, preferences);
@@ -228,7 +228,7 @@ export default function App() {
       const token = await getDailyPushToken();
       await saveDailyScoutSubscription(true, preferences, token);
       setPreferences(current => ({ ...current, dailyScoutEnabled: true }));
-      setDailyScoutMessage('Daily scout alerts are on. The app will check for sourced weekend ideas and sign-up deadlines.');
+      setDailyScoutMessage('Daily web scout alerts are on. Possible weekend ideas and sign-up deadlines will link to their source.');
     } catch { setDailyScoutMessage('Daily alerts could not be connected. Check the live service and push credentials.'); }
   };
   const useCurrentLocation = async () => {
@@ -321,7 +321,7 @@ export default function App() {
       </View> : tab === 'Discover' ? <View>
         <ImageBackground source={require('./assets/discovery-hero-v2.png')} style={styles.heroImage} imageStyle={styles.heroImageCorners}><Text style={styles.heroKicker}>MAKE A STORY OF IT</Text><Text style={styles.heroTitle}>{'Find the\nunexpected.'}</Text></ImageBackground>
         <View style={styles.homeIntro}><View style={styles.homeIntroText}><Text style={styles.sectionKicker}>LOCAL INSPIRATION</Text><Text style={styles.homeTitle}>{showingTorontoSamples ? 'Toronto ideas.' : `${preferences.place.split(',')[0].trim() || 'Local'} ideas.`}</Text></View><Pressable onPress={() => setTab('Settings')} style={styles.placeButton}><Text style={styles.placeButtonText}>⌖  Change place</Text></Pressable></View>
-        <Text style={styles.homeLead}>{showingTorontoSamples ? 'Three Toronto sample ideas and two sponsored placement previews. These are examples, not confirmed events.' : remoteItems.length ? `Ideas for ${preferences.place}. Open each source to check current details.` : `No verified local listings for ${preferences.place} yet. Set another place in Settings.`}</Text>
+        <Text style={styles.homeLead}>{showingTorontoSamples ? 'Three Toronto sample ideas and two sponsored placement previews. These are examples, not confirmed events.' : remoteItems.length ? `Ideas for ${preferences.place}. Open each source to check current details.` : `No source-linked ideas for ${preferences.place} yet. The live web scout is being connected.`}</Text>
         {autoScoutStatus ? <Text style={styles.scoutStatus}>✦  {autoScoutStatus}</Text> : null}
         <Pressable onPress={() => setSearchOpen(value => !value)} style={styles.searchToggle} accessibilityRole="button" accessibilityState={{ expanded: searchOpen }}><Text style={styles.searchToggleText}>⌕  Search and refine</Text><Text style={styles.searchChevron}>{searchOpen ? '−' : '+'}</Text></Pressable>
         {searchOpen && <View style={styles.searchPanel}>
@@ -353,7 +353,7 @@ export default function App() {
         </View>}
         {alerts.length > 0 && <Pressable onPress={() => setTab('Settings')} style={styles.alertBanner}><Text style={styles.alertBannerTitle}>✦ {alerts.length} timely {alerts.length === 1 ? 'find' : 'finds'} for you</Text><Text style={styles.alertBannerBody}>See what fits your interests →</Text></Pressable>}
         <View style={styles.rowBetween}><Text style={styles.subheading}>{showDiverse ? 'A different direction' : showingTorontoSamples ? 'Toronto sample ideas' : 'Local ideas for you'}</Text><Text style={styles.resultCount}>{homeOrganicItems.length} shown</Text></View>
-        {catalogLoading ? <Text style={styles.notice}>Loading ideas…</Text> : homeOrganicItems.length ? homeOrganicItems.map(item => <View key={item.id}><Text style={styles.whyText}>{fitReason(item)}</Text>{itemCard(item)}</View>) : <View style={styles.empty}><Text style={styles.emptyTitle}>No ideas here yet.</Text><Text style={styles.summary}>Try another place, budget, or travel radius in Settings.</Text></View>}
+        {catalogLoading ? <Text style={styles.notice}>Loading ideas…</Text> : homeOrganicItems.length ? homeOrganicItems.map(item => <View key={item.id}><Text style={styles.whyText}>{fitReason(item)}</Text>{itemCard(item)}</View>) : <View style={styles.empty}><Text style={styles.emptyTitle}>No ideas here yet.</Text><Text style={styles.summary}>{remoteScoutConfigured ? 'Try another interest, budget, or travel radius in Settings.' : 'Live web discoveries are not connected in this preview yet.'}</Text></View>}
         {sponsoredPreviews.length > 0 && <View style={styles.sponsoredSection}><View style={styles.rowBetween}><Text style={styles.sponsoredKicker}>SPONSORED SPOTS</Text><Text style={styles.sponsoredPreview}>PREVIEW</Text></View><Text style={styles.sponsoredDisclosure}>Two examples of paid placement. No partner has paid for these sample listings; sponsorship does not affect the ideas above.</Text>{sponsoredPreviews.map(itemCard)}</View>}
         {!showMoreIdeas && organicItems.length > 3 && !searchOpen && <Action label="See more local ideas" onPress={() => setShowMoreIdeas(true)} secondary />}
         <Action label={showDiverse ? 'Back to your picks' : 'Show me something different'} onPress={() => setShowDiverse(value => !value)} secondary />
@@ -399,11 +399,11 @@ export default function App() {
         <Setting label="Highlight free opportunities" value={preferences.freeAlerts} onPress={() => setPreferences(current => ({ ...current, freeAlerts: !current.freeAlerts }))} />
         <Setting label="Watch saved interests" value={preferences.savedAlerts} onPress={() => setPreferences(current => ({ ...current, savedAlerts: !current.savedAlerts }))} />
         <Setting label="Phone reminders for verified matches" value={preferences.phoneAlertsEnabled} onPress={togglePhoneAlerts} />
-        <Text style={styles.helper}>When a source-checked match has a sign-up deadline or is coming up soon, your phone can remind you. New finds while the app is closed need a live feed and push service.</Text>
+        <Text style={styles.helper}>When a source-checked match has a sign-up deadline or is coming up soon, your phone can remind you. Finding new ideas while the app is closed needs the daily web scout and push service.</Text>
         {phoneAlertMessage ? <Text style={styles.notice}>{phoneAlertMessage}</Text> : null}
         {preferences.phoneAlertsEnabled && <Action label="Try a sample phone alert" onPress={() => { sendSampleAlert().then(() => setPhoneAlertMessage('Sample alert scheduled in five seconds.')).catch(() => setPhoneAlertMessage('The sample alert could not be sent.')); }} secondary />}
         <Setting label="Daily scout for weekends and sign-up deadlines" value={preferences.dailyScoutEnabled} onPress={() => { void toggleDailyScout(); }} />
-        <Text style={styles.helper}>{dailyScoutConfigured ? 'With your permission, the server checks once each morning for sourced matches and sends at most two alerts.' : 'Daily alerts are being built. This preview cannot send new finds while the app is closed yet.'}</Text>
+        <Text style={styles.helper}>{dailyScoutConfigured ? 'With your permission, the web scout checks each morning and sends at most two possible matches with source links.' : 'Daily web alerts are being built. This preview cannot send new finds while the app is closed yet.'}</Text>
         {dailyScoutMessage ? <Text style={styles.notice}>{dailyScoutMessage}</Text> : null}
         <Text style={styles.subheading}>Timely finds</Text>
         {alerts.length ? alerts.map(alert => <Pressable key={alert.item.id} onPress={() => setSelected(alert.item)} style={styles.alertCard}><Text style={styles.alertTag}>✦ {alert.reason}</Text><Text style={styles.alertTitle}>{alert.item.title}</Text><Text style={styles.cardMeta}>Starts {formatDate(alert.item.startsAt)} · {money(alert.item.totalCost, alert.item.currency)} · {formatDistance(alert.item.distanceKm, preferences.distanceUnit)}</Text><Text style={styles.alertLink}>See details →</Text></Pressable>) : <View style={styles.empty}><Text style={styles.emptyTitle}>No timely finds right now.</Text><Text style={styles.summary}>Enable alerts and choose interests to see matching sample opportunities.</Text></View>}
