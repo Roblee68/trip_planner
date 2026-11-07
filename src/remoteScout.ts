@@ -21,7 +21,7 @@ type Pick = {
   mode: 'sample' | 'live'; reason: string;
 };
 export type ScoutCitation = { startIndex: number; endIndex: number; url: string; title: string };
-export type WebIdea = { id: string; title: string; summary: string; reason: string; dateText: string; priceText: string; venue: string; address: string | null; place: string; sourceUrl: string; foundAt: string };
+export type WebIdea = { id: string; title: string; summary: string; reason: string; dateText: string; eventDate?: string; priceText: string; venue: string; address: string | null; place: string; sourceUrl: string; foundAt: string };
 type ScoutResponse = { message: string; picks: Pick[]; followUp: string | null; mode: 'sample' | 'live' | 'web'; citations?: ScoutCitation[]; ideas?: WebIdea[] };
 
 export function pickToExperience(pick: Pick): Experience {
@@ -35,17 +35,26 @@ export function pickToExperience(pick: Pick): Experience {
   };
 }
 
-export async function askRemoteScout(prompt: string, preferences: Preferences, refinement: 'balanced' | 'different' | 'cheaper' | 'closer'): Promise<ScoutResponse> {
+export type RouteSearch = { destination: string; style: 'highway' | 'towns' | 'either'; via: string; detourMinutes: number; timing: 'today' | 'weekend' | 'flexible' };
+export async function askRemoteScout(prompt: string, preferences: Preferences, refinement: 'balanced' | 'different' | 'cheaper' | 'closer', todayHours?: number, route?: RouteSearch, surprise = false, likedExamples: string[] = []): Promise<ScoutResponse> {
   if (!remoteScoutConfigured) throw new Error('The agent connection is not configured on this device.');
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(app);
   if (!auth.currentUser) await signInAnonymously(auth);
   const call = httpsCallable(getFunctions(app, 'northamerica-northeast2'), 'suggestExperiences');
+  const localNow = new Date();
+  const localDate = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
   const response = await call({
     prompt: prompt.trim() || 'Find an interesting experience for me',
     place: preferences.place.trim(), currency: preferences.currency.trim().toUpperCase(),
     maxBudget: preferences.maxBudget, maxDistanceKm: preferences.maxDistanceKm,
     interests: preferences.interests, topics: preferences.topics, travelModes: preferences.travelModes, refinement,
+    likedExamples: surprise ? [] : likedExamples.slice(0, 12),
+    occasion: route ? 'route' : todayHours ? 'today' : surprise ? 'surprise' : 'any',
+    localDate: todayHours || route?.timing === 'today' ? localDate : undefined,
+    timeAvailableHours: todayHours,
+    routeDestination: route?.destination.trim(), routeStyle: route?.style, routeVia: route?.via.trim(),
+    detourMinutes: route?.detourMinutes, routeTiming: route?.timing,
   });
   return response.data as ScoutResponse;
 }

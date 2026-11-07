@@ -17,6 +17,35 @@ test('accepts selected specific interests and travel modes', () => {
   assert.deepEqual(selected.travelModes, ['train', 'ferry']);
 });
 
+test('today search requires a valid local date and limited available time', () => {
+  const base = { prompt: 'Today', place: 'Paris, France', currency: 'EUR', maxBudget: 50, maxDistanceKm: 30, occasion: 'today' };
+  assert.throws(() => parseScoutRequest({ ...base, localDate: '2026-11-07', timeAvailableHours: 0 }));
+  assert.throws(() => parseScoutRequest({ ...base, localDate: '07/11/2026', timeAvailableHours: 2 }));
+  const selected = parseScoutRequest({ ...base, localDate: '2026-11-07', timeAvailableHours: 2 });
+  assert.equal(selected.occasion, 'today');
+  assert.equal(selected.timeAvailableHours, 2);
+});
+
+test('route search keeps the journey and detour bounded', () => {
+  const base = { prompt: 'Find a stop', place: 'Hamilton, Canada', currency: 'CAD', maxBudget: 75, maxDistanceKm: 80, occasion: 'route', routeDestination: 'Niagara Falls, Canada', routeStyle: 'highway', routeVia: 'QEW', detourMinutes: 30, routeTiming: 'weekend' };
+  const selected = parseScoutRequest(base);
+  assert.equal(selected.routeDestination, 'Niagara Falls, Canada');
+  assert.equal(selected.routeVia, 'QEW');
+  assert.equal(selected.detourMinutes, 30);
+  assert.throws(() => parseScoutRequest({ ...base, detourMinutes: 180 }));
+  assert.throws(() => parseScoutRequest({ ...base, routeDestination: 'Hamilton, Canada' }));
+});
+
+test('serendipity discards loved examples sent by a client', () => {
+  const selected = parseScoutRequest({ prompt: 'Surprise me', place: 'Hamilton, Canada', currency: 'CAD', maxBudget: 100, maxDistanceKm: 30, interests: [], topics: [], travelModes: ['car'], occasion: 'surprise', likedExamples: ['Ballroom class'] });
+  assert.deepEqual(selected.likedExamples, []);
+});
+
+test('ordinary searches accept a bounded list of explicitly loved ideas', () => {
+  const selected = parseScoutRequest({ prompt: 'Find ideas', place: 'Hamilton, Canada', currency: 'CAD', maxBudget: 100, maxDistanceKm: 30, likedExamples: ['Pottery class', 'Guided food tour'] });
+  assert.deepEqual(selected.likedExamples, ['Pottery class', 'Guided food tour']);
+});
+
 test('treats mile limits in a scout prompt as kilometres internally', () => {
   const miles = parseScoutRequest({ prompt: 'Within 10 miles', place: 'Paris, France', currency: 'EUR', maxBudget: 50, maxDistanceKm: 30 });
   assert.deepEqual(eligibleCandidates([event('near', { distanceKm: 15 }), event('far', { distanceKm: 18 })], miles).map(item => item.id), ['near']);

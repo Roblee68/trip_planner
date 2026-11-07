@@ -13,10 +13,23 @@ export function parseScoutRequest(value: unknown): ScoutRequest {
   const interests = Array.isArray(data.interests) ? data.interests.filter((x): x is string => typeof x === 'string').slice(0, 12) : [];
   const topics = Array.isArray(data.topics) ? data.topics.filter((x): x is string => typeof x === 'string' && x.length <= 50).slice(0, 80) : [];
   const travelModes = Array.isArray(data.travelModes) ? data.travelModes.filter((x): x is string => typeof x === 'string' && ['walk', 'transit', 'train', 'car', 'plane', 'ferry', 'boat'].includes(x)).slice(0, 7) : [];
+  const likedExamples = Array.isArray(data.likedExamples) ? data.likedExamples.filter((x): x is string => typeof x === 'string').map(x => x.trim().slice(0, 120)).filter(Boolean).slice(0, 12) : [];
   const refinement = ['balanced', 'different', 'cheaper', 'closer'].includes(String(data.refinement)) ? data.refinement as ScoutRequest['refinement'] : 'balanced';
+  const occasion = data.occasion === 'today' ? 'today' : data.occasion === 'route' ? 'route' : data.occasion === 'surprise' ? 'surprise' : 'any';
+  const localDate = typeof data.localDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.localDate) ? data.localDate : undefined;
+  const timeAvailableHours = Number(data.timeAvailableHours);
+  const routeDestination = typeof data.routeDestination === 'string' ? data.routeDestination.trim() : '';
+  const routeStyle = ['highway', 'towns', 'either'].includes(String(data.routeStyle)) ? data.routeStyle as ScoutRequest['routeStyle'] : 'either';
+  const routeVia = typeof data.routeVia === 'string' ? data.routeVia.trim() : '';
+  const detourMinutes = Number(data.detourMinutes);
+  const routeTiming = ['today', 'weekend', 'flexible'].includes(String(data.routeTiming)) ? data.routeTiming as ScoutRequest['routeTiming'] : 'flexible';
   if (!prompt || prompt.length > 500 || place.length < 3 || place.length > 120 || !/^[A-Z]{3}$/.test(currency) || !Number.isFinite(maxBudget) || maxBudget < 0 || maxBudget > 10000 || !Number.isFinite(maxDistanceKm) || maxDistanceKm < 0 || maxDistanceKm > 500) throw new Error('Invalid discovery request');
   if ((latitude === undefined) !== (longitude === undefined) || (latitude !== undefined && (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude! < -180 || longitude! > 180))) throw new Error('Invalid location');
-  return { prompt, place, currency, latitude, longitude, maxBudget, maxDistanceKm, interests, topics, travelModes, refinement };
+  if (occasion === 'today' && (!localDate || !Number.isInteger(timeAvailableHours) || timeAvailableHours < 1 || timeAvailableHours > 12)) throw new Error('Invalid today request');
+  if (occasion === 'route' && (routeDestination.length < 3 || routeDestination.length > 120 || routeDestination.toLowerCase() === place.toLowerCase() || routeVia.length > 100 || !Number.isInteger(detourMinutes) || detourMinutes < 0 || detourMinutes > 120 || (routeTiming === 'today' && !localDate))) throw new Error('Invalid route request');
+  return { prompt, place, currency, latitude, longitude, maxBudget, maxDistanceKm, interests, topics, travelModes, likedExamples: occasion === 'surprise' ? [] : likedExamples, refinement, occasion, localDate, timeAvailableHours: occasion === 'today' ? timeAvailableHours : undefined,
+    routeDestination: occasion === 'route' ? routeDestination : undefined, routeStyle: occasion === 'route' ? routeStyle : undefined, routeVia: occasion === 'route' ? routeVia : undefined,
+    detourMinutes: occasion === 'route' ? detourMinutes : undefined, routeTiming: occasion === 'route' ? routeTiming : undefined };
 }
 
 export function distanceKm(aLat: number, aLon: number, bLat: number, bLon: number): number {

@@ -41,12 +41,13 @@ test('specific interests match activities and selected travel modes limit the fe
   assert.deepEqual(rankExperiences([pottery], { ...settings, travelModes: ['car'] }, {}, []), []);
 });
 
-test('expanded interests are unique and forests and metalwork match relevant ideas', () => {
-  assert.equal(interestTopics.length, 66);
+test('expanded interests are unique and forests, metalwork and tours match relevant ideas', () => {
+  assert.equal(interestTopics.length, 71);
   assert.equal(new Set(topicGroups.flatMap(group => group.topics)).size, interestTopics.length);
   assert.ok(topicGroups.find(group => group.label === 'Nature and discovery').topics.includes('Forests'));
   assert.ok(topicGroups.find(group => group.label === 'Make, learn and browse').topics.includes('Art'));
   assert.deepEqual(matchedTopics({ ...item('Forest walk and blacksmith workshop', 'Learning', 20, 5, 4), tags: ['forge'] }, ['Forests', 'Metalwork', 'Pottery']), ['Forests', 'Metalwork']);
+  assert.deepEqual(matchedTopics(item('Guided wildlife tour', 'Outdoors', 20, 5, 4), ['Guided tours', 'Wildlife tours']), ['Guided tours', 'Wildlife tours']);
 });
 
 test('open to new ideas lifts an unfamiliar category without creating an alert interest', () => {

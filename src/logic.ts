@@ -15,14 +15,15 @@ export const interestTopics = [
   'Books', 'Metalwork', 'Painting', 'Textiles', 'Jewellery making', 'Cycling',
   'Running', 'Paddling', 'Water sports', 'Winter sports', 'Climbing', 'Board games',
   'Trivia', 'Family activities', 'Volunteering', 'Community gatherings', 'Open to new ideas',
+  'Guided tours', 'Walking tours', 'Wildlife tours', 'Boat tours', 'Behind-the-scenes tours',
 ] as const;
 export type InterestTopic = typeof interestTopics[number];
 export const topicGroups: { label: string; topics: InterestTopic[] }[] = [
-  { label: 'Nature and discovery', topics: ['Hiking', 'Forests', 'Gardens', 'Waterfalls', 'Beaches', 'Epic views', 'Stargazing', 'Birdwatching', 'Farms', 'Farm animals', 'Wild animals'] },
+  { label: 'Nature and discovery', topics: ['Hiking', 'Forests', 'Gardens', 'Waterfalls', 'Beaches', 'Epic views', 'Stargazing', 'Birdwatching', 'Farms', 'Farm animals', 'Wild animals', 'Wildlife tours'] },
   { label: 'Food, markets and celebrations', topics: ['Fairs', 'Markets', 'Farmers markets', 'Antiques', 'Festivals', 'Holiday events', 'Eating', 'Food tours', 'Cooking', 'Street food', 'Coffee and tea'] },
-  { label: 'Shows, culture and stories', topics: ['Shows', 'Musicals', 'Theatre', 'Live music', 'Comedy', 'Cinema', 'Books', 'Villages', 'Culture', 'Museums', 'History', 'Archaeology', 'Paleontology', 'Architecture'] },
-  { label: 'Make, learn and browse', topics: ['Art', 'Dancing', 'Classes', 'Crafts', 'Pottery', 'Woodwork', 'Metalwork', 'Painting', 'Textiles', 'Jewellery making', 'Photography', 'Shopping', 'Handmade', 'Open to new ideas'] },
-  { label: 'Sports and adventure', topics: ['Sports', 'Play sports', 'Active', 'Adrenaline', 'Cycling', 'Running', 'Paddling', 'Water sports', 'Winter sports', 'Climbing', 'Rare activities'] },
+  { label: 'Shows, culture and stories', topics: ['Shows', 'Musicals', 'Theatre', 'Live music', 'Comedy', 'Cinema', 'Books', 'Villages', 'Culture', 'Museums', 'History', 'Archaeology', 'Paleontology', 'Architecture', 'Guided tours', 'Walking tours'] },
+  { label: 'Make, learn and browse', topics: ['Art', 'Dancing', 'Classes', 'Crafts', 'Pottery', 'Woodwork', 'Metalwork', 'Painting', 'Textiles', 'Jewellery making', 'Photography', 'Shopping', 'Handmade', 'Behind-the-scenes tours', 'Open to new ideas'] },
+  { label: 'Sports and adventure', topics: ['Sports', 'Play sports', 'Active', 'Adrenaline', 'Cycling', 'Running', 'Paddling', 'Water sports', 'Boat tours', 'Winter sports', 'Climbing', 'Rare activities'] },
   { label: 'Together and community', topics: ['Board games', 'Trivia', 'Family activities', 'Volunteering', 'Community gatherings'] },
 ];
 const topicTerms: Record<InterestTopic, string[]> = {
@@ -58,6 +59,11 @@ const topicTerms: Record<InterestTopic, string[]> = {
   Trivia: ['trivia', 'quiz night'], 'Family activities': ['family activity', 'family friendly'],
   Volunteering: ['volunteer', 'community service'], 'Community gatherings': ['community gathering', 'meetup', 'social club'],
   'Open to new ideas': [],
+  'Guided tours': ['guided', 'guided tour', 'guided walk', 'tour guide'],
+  'Walking tours': ['walking tour', 'heritage walk', 'city walk'],
+  'Wildlife tours': ['wildlife tour', 'wildlife watching', 'animal tour', 'safari'],
+  'Boat tours': ['boat tour', 'boat cruise', 'sightseeing cruise', 'harbour cruise'],
+  'Behind-the-scenes tours': ['behind the scenes', 'backstage tour', 'factory tour', 'studio tour'],
 };
 export function matchedTopics(item: Experience, topics: InterestTopic[]): InterestTopic[] {
   const words = `${item.title} ${item.summary} ${item.tags.join(' ')}`.toLowerCase();
