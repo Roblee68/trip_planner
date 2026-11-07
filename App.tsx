@@ -9,7 +9,7 @@ import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/a
 import { askRemoteScout, pickToExperience, remoteScoutConfigured } from './src/remoteScout';
 
 type Tab = 'Discover' | 'Now' | 'Along the Way' | 'Saved' | 'You';
-type StoredState = { preferences: Preferences; feedback: Feedback; savedIds: string[]; setupComplete: boolean };
+type StoredState = { preferences: Preferences; feedback: Feedback; savedIds: string[]; savedItems: Experience[]; setupComplete: boolean };
 const STORAGE_KEY = 'pbb-local-state-v1';
 const tabs: Tab[] = ['Discover', 'Now', 'Along the Way', 'Saved', 'You'];
 const ink = '#103D46';
@@ -30,12 +30,14 @@ function formatDate(date: string) {
 
 function Card({ item, saved, loved, onOpen, onSave, onLove, onPass }: { item: Experience; saved: boolean; loved: boolean; onOpen: () => void; onSave: () => void; onLove: () => void; onPass: () => void }) {
   const artInk = item.accent === '#103D46' ? '#F5F8F7' : '#103D46';
+  const checked = item.verifiedAt ? Date.parse(item.verifiedAt) : NaN;
+  const checkedRecently = Number.isFinite(checked) && checked <= Date.now() && Date.now() - checked <= 48 * 60 * 60 * 1000;
   return <View style={styles.card}>
     <View style={[styles.cardArt, { backgroundColor: item.accent }]}><Text style={[styles.artGlyph, { color: artInk }]}>{item.category === 'Dance' ? '✦' : item.category === 'Outdoors' ? '◒' : item.category === 'Arts' ? '✳' : item.category === 'Food' ? '◌' : item.category === 'Learning' ? '✧' : '☼'}</Text><Text style={[styles.artLabel, { color: artInk }]}>{item.category.toUpperCase()}</Text></View>
     <View style={styles.cardBody}>
-      <View style={styles.rowBetween}><Text style={styles.eyebrow}>{item.mode === 'live' ? 'Source checked' : 'Sample'} · {item.format} · {formatDate(item.startsAt)}</Text><Text style={styles.cost}>{money(item.totalCost, item.currency)}</Text></View>
+      <View style={styles.rowBetween}><Text style={styles.eyebrow}>{item.mode === 'live' ? checkedRecently ? 'Source checked recently' : 'Recheck source' : 'Sample'} · {item.format} · {formatDate(item.startsAt)}</Text><Text style={styles.cost}>{money(item.totalCost, item.currency)}</Text></View>
       <Text style={styles.cardTitle}>{item.title}</Text>
-      <Text style={styles.cardMeta}>{item.location} · {item.distanceKm} km · {item.durationHours} hr</Text>
+      <Text style={styles.cardMeta}>{item.location}{item.place ? ` · ${item.place}` : ''} · {item.distanceKm} km · {item.durationHours} hr</Text>
       <Text style={styles.summary} numberOfLines={2}>{item.summary}</Text>
       <View style={styles.cardActions}>
         <Action label="Explore" onPress={onOpen} small />
@@ -53,6 +55,7 @@ export default function App() {
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
   const [feedback, setFeedback] = useState<Feedback>({});
   const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [savedItems, setSavedItems] = useState<Experience[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [setupComplete, setSetupComplete] = useState(false);
   const [lastPassed, setLastPassed] = useState<{ item: Experience; wasSaved: boolean } | null>(null);
@@ -79,13 +82,14 @@ export default function App() {
         if (saved.preferences) setPreferences({ ...defaultPreferences, ...saved.preferences, place: saved.preferences.place || 'Toronto, Canada' });
         if (saved.feedback) setFeedback(saved.feedback);
         if (saved.savedIds) setSavedIds(saved.savedIds);
+        if (Array.isArray(saved.savedItems)) setSavedItems(saved.savedItems.filter(item => item?.mode === 'live' && typeof item.id === 'string' && item.sourceUrl?.startsWith('https://')).slice(0, 100));
         if (saved.setupComplete) setSetupComplete(true);
       }
     }).catch(() => {}).finally(() => setHydrated(true));
   }, []);
   useEffect(() => {
-    if (hydrated) AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ preferences, feedback, savedIds, setupComplete })).catch(() => {});
-  }, [preferences, feedback, savedIds, setupComplete, hydrated]);
+    if (hydrated) AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ preferences, feedback, savedIds, savedItems, setupComplete })).catch(() => {});
+  }, [preferences, feedback, savedIds, savedItems, setupComplete, hydrated]);
   useEffect(() => {
     catalog.load().then(result => setExperiences(result.items)).catch(() => setExperiences([])).finally(() => setCatalogLoading(false));
   }, []);
@@ -94,12 +98,20 @@ export default function App() {
   const showingTorontoSamples = /^toronto(?:\b|,)/i.test(preferences.place.trim()) && preferences.currency === 'CAD';
   const localExamples = useMemo(() => showingTorontoSamples ? experiences : [], [experiences, showingTorontoSamples]);
   const allItems = useMemo(() => [...remoteItems, ...localExamples.filter(item => !remoteItems.some(remote => remote.id === item.id))], [remoteItems, localExamples]);
+  const savedVisible = useMemo(() => {
+    const byId = new Map([...savedItems, ...allItems].map(item => [item.id, item]));
+    return [...byId.values()].filter(item => savedIds.includes(item.id));
+  }, [savedItems, allItems, savedIds]);
   const ranked = useMemo(() => rankExperiences(allItems, preferences, feedback, savedIds), [allItems, preferences, feedback, savedIds]);
   const alerts = useMemo(() => opportunityAlerts(allItems, preferences, feedback, savedIds), [allItems, preferences, feedback, savedIds]);
   const agentSuggestions = useMemo(() => remoteScoutConfigured ? remoteSuggestions.map(suggestion => ({ item: suggestion.item, reasons: [suggestion.reason] })) : activeRequest === null ? [] : recommendForIntent(localExamples, preferences, feedback, savedIds, interpretIntent(activeRequest), agentMode).slice(0, 3), [localExamples, preferences, feedback, savedIds, activeRequest, agentMode, remoteSuggestions]);
   const visible = ranked.filter(item => (category === 'All' || item.category === category) && (!query || `${item.title} ${item.category} ${item.tags.join(' ')} ${item.location}`.toLowerCase().includes(query.toLowerCase())));
   const diverse = showDiverse ? [...visible].sort((a, b) => Number(preferences.interests.includes(a.category)) - Number(preferences.interests.includes(b.category))) : visible;
-  const toggleSaved = (id: string) => setSavedIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]);
+  const toggleSaved = (item: Experience) => {
+    const alreadySaved = savedIds.includes(item.id);
+    setSavedIds(current => current.includes(item.id) ? current.filter(value => value !== item.id) : [...current, item.id]);
+    if (item.mode === 'live') setSavedItems(current => alreadySaved ? current.filter(value => value.id !== item.id) : [item, ...current.filter(value => value.id !== item.id)].slice(0, 100));
+  };
   const toggleInterest = (value: Category) => setPreferences(current => ({ ...current, interests: current.interests.includes(value) ? current.interests.filter(item => item !== value) : [...current.interests, value] }));
   const setNumber = (key: 'maxBudget' | 'maxDistanceKm', value: string) => {
     const number = Number(value.replace(/[^0-9]/g, ''));
@@ -123,11 +135,12 @@ export default function App() {
       setScoutMessage(error instanceof Error ? `The scout is unavailable: ${error.message}` : 'The scout is unavailable. Please try again.');
     } finally { setScoutLoading(false); }
   };
-  const itemCard = (item: Experience) => <Card key={item.id} item={item} saved={savedIds.includes(item.id)} loved={feedback[item.id] === 'love'} onOpen={() => setSelected(item)} onSave={() => toggleSaved(item.id)} onLove={() => setFeedback(current => { const next = { ...current }; if (next[item.id] === 'love') delete next[item.id]; else next[item.id] = 'love'; return next; })} onPass={() => { setFeedback(current => ({ ...current, [item.id]: 'pass' })); setSavedIds(current => current.filter(id => id !== item.id)); setLastPassed({ item, wasSaved: savedIds.includes(item.id) }); }} />;
+  const itemCard = (item: Experience) => <Card key={item.id} item={item} saved={savedIds.includes(item.id)} loved={feedback[item.id] === 'love'} onOpen={() => setSelected(item)} onSave={() => toggleSaved(item)} onLove={() => setFeedback(current => { const next = { ...current }; if (next[item.id] === 'love') delete next[item.id]; else next[item.id] = 'love'; return next; })} onPass={() => { setFeedback(current => ({ ...current, [item.id]: 'pass' })); setSavedIds(current => current.filter(id => id !== item.id)); setSavedItems(current => current.filter(value => value.id !== item.id)); setLastPassed({ item, wasSaved: savedIds.includes(item.id) }); }} />;
   const undoPass = () => {
     if (!lastPassed) return;
     setFeedback(current => { const next = { ...current }; delete next[lastPassed.item.id]; return next; });
     if (lastPassed.wasSaved) setSavedIds(current => current.includes(lastPassed.item.id) ? current : [...current, lastPassed.item.id]);
+    if (lastPassed.wasSaved && lastPassed.item.mode === 'live') setSavedItems(current => [lastPassed.item, ...current.filter(item => item.id !== lastPassed.item.id)].slice(0, 100));
     setLastPassed(null);
   };
 
@@ -157,7 +170,8 @@ export default function App() {
         <View style={styles.infoPanel}><Text style={styles.infoText}>⌖  {selected.location} · about {selected.distanceKm} km from {preferences.place}</Text><Text style={styles.infoText}>◷  Starts {formatDate(selected.startsAt)} · {selected.durationHours} hours</Text><Text style={styles.infoText}>$  {money(selected.totalCost, selected.currency)} listed cost</Text></View>
         <Text style={styles.notice}>Before leaving, confirm the date, time, price, availability, weather policy and location with the organizer. Activities can fill, sell out, close or change without notice. PB&B and AI can make mistakes.</Text>
         {selected.mode === 'live' && selected.sourceUrl?.startsWith('https://') ? <Action label="Check the listing source ↗" onPress={() => Linking.openURL(selected.sourceUrl!)} /> : <Text style={styles.notice}>This is a sample idea without a verified source or booking link.</Text>}
-        <Action label={savedIds.includes(selected.id) ? 'Remove from saved' : 'Save for later'} onPress={() => toggleSaved(selected.id)} />
+        {selected.mode === 'live' && selected.verifiedAt ? <Text style={styles.helper}>Source last checked {formatDate(selected.verifiedAt)}. Confirm current details with the organizer.</Text> : null}
+        <Action label={savedIds.includes(selected.id) ? 'Remove from saved' : 'Save for later'} onPress={() => toggleSaved(selected)} />
       </View> : tab === 'Discover' ? <View>
         <ImageBackground source={require('./assets/discovery-hero-v2.png')} style={styles.heroImage} imageStyle={styles.heroImageCorners}><Text style={styles.heroKicker}>MAKE A STORY OF IT</Text><Text style={styles.heroTitle}>{'Find the\nunexpected.'}</Text></ImageBackground>
         <View style={styles.agentPanel}><Text style={styles.agentKicker}>✦ YOUR PERSONAL SCOUT</Text><Text style={styles.agentTitle}>What are you up for?</Text><Text style={styles.agentLead}>A free hour, a new skill, a little adventure. Tell PB&B what sounds good.</Text>
@@ -190,9 +204,9 @@ export default function App() {
         <Text style={styles.notice}>Route matching is coming next. Toronto sample stops appear only when exploring Toronto; entering a destination does not calculate a route.</Text>
         {ranked.filter(item => item.alongWay).map(itemCard)}
       </View> : tab === 'Saved' ? <View>
-        <Text style={styles.sectionKicker}>YOUR SHORTLIST</Text><Text style={styles.h1}>Saved for later.</Text><Text style={styles.lead}>Keep possibilities close. Saved interests can qualify for timely in-app alerts.</Text>
-        {allItems.filter(item => savedIds.includes(item.id)).map(itemCard)}
-        {!allItems.some(item => savedIds.includes(item.id)) && <View style={styles.empty}><Text style={styles.emptyTitle}>No saved ideas in this place.</Text><Text style={styles.summary}>Save an experience from Discover to find it here.</Text><Action label="Explore ideas" onPress={() => setTab('Discover')} small /></View>}
+        <Text style={styles.sectionKicker}>YOUR SHORTLIST</Text><Text style={styles.h1}>Saved for later.</Text><Text style={styles.lead}>Keep possibilities close across places. Recheck each live source before making plans.</Text>
+        {savedVisible.map(itemCard)}
+        {!savedVisible.length && <View style={styles.empty}><Text style={styles.emptyTitle}>No saved ideas yet.</Text><Text style={styles.summary}>Save an experience from Discover to find it here.</Text><Action label="Explore ideas" onPress={() => setTab('Discover')} small /></View>}
       </View> : <View>
         <Text style={styles.sectionKicker}>YOUR PREFERENCES</Text><Text style={styles.h1}>Made for your curiosity.</Text><Text style={styles.lead}>Set the boundaries. Your choices stay on this device in this prototype.</Text>
         <Text style={styles.subheading}>Timely finds</Text>

@@ -15,9 +15,9 @@ export const remoteScoutConfigured = process.env.EXPO_PUBLIC_PBB_REMOTE_SCOUT ==
 const validCategories: Category[] = ['Dance', 'Outdoors', 'Arts', 'Food', 'Learning', 'Wellness'];
 
 type Pick = {
-  id: string; title: string; category: string; summary: string; startsAt: string;
+  id: string; title: string; category: string; summary: string; listedAt: string; startsAt: string;
   durationHours: number; totalCost: number; currency: string; distanceKm: number;
-  location: string; sourceUrl: string | null; verifiedAt: string | null;
+  location: string; place: string; sourceUrl: string | null; verifiedAt: string | null;
   mode: 'sample' | 'live'; reason: string;
 };
 type ScoutResponse = { message: string; picks: Pick[]; followUp: string | null; mode: 'sample' | 'live' };
@@ -27,8 +27,8 @@ export function pickToExperience(pick: Pick): Experience {
   return {
     id: pick.id, title: pick.title, category, summary: pick.summary, startsAt: pick.startsAt,
     durationHours: pick.durationHours, totalCost: pick.totalCost, currency: pick.currency,
-    distanceKm: pick.distanceKm, location: pick.location, sourceUrl: pick.sourceUrl ?? undefined,
-    verifiedAt: pick.verifiedAt ?? undefined, mode: pick.mode, listedAt: pick.verifiedAt || new Date().toISOString(),
+    distanceKm: pick.distanceKm, location: pick.location, place: pick.place, sourceUrl: pick.sourceUrl ?? undefined,
+    verifiedAt: pick.verifiedAt ?? undefined, mode: pick.mode, listedAt: pick.listedAt,
     format: 'Experience', tags: [], alongWay: false, accent: '#18B8B0',
   };
 }

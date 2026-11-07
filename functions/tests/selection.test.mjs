@@ -3,7 +3,7 @@ import test from 'node:test';
 import { distanceKm, eligibleCandidates, finalizeResponse, parseScoutRequest } from '../lib/selection.js';
 
 const request = parseScoutRequest({ prompt: 'Something free within 20 km for 2 hours', place: 'Paris, France', currency: 'EUR', maxBudget: 50, maxDistanceKm: 30, interests: ['Arts'], refinement: 'balanced' });
-const event = (id, overrides = {}) => ({ id, title: id, category: 'Arts', summary: '', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationHours: 1, totalCost: 0, currency: 'EUR', distanceKm: 8, location: 'Paris', place: 'Paris, France', sourceUrl: 'https://example.org/event', verifiedAt: new Date().toISOString(), status: 'active', mode: 'live', ...overrides });
+const event = (id, overrides = {}) => ({ id, title: id, category: 'Arts', summary: '', listedAt: new Date(Date.now() - 86_400_000).toISOString(), startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationHours: 1, totalCost: 0, currency: 'EUR', distanceKm: 8, location: 'Paris', place: 'Paris, France', sourceUrl: 'https://example.org/event', verifiedAt: new Date().toISOString(), status: 'active', mode: 'live', ...overrides });
 
 test('accepts a location and currency without assuming Toronto or CAD', () => {
   assert.equal(request.place, 'Paris, France');
@@ -30,4 +30,6 @@ test('discards invented or duplicate AI picks and copies facts from the catalog'
   assert.deepEqual(response.picks.map(pick => pick.id), ['real']);
   assert.equal(response.picks[0].sourceUrl, 'https://example.org/event');
   assert.equal(response.picks[0].currency, 'EUR');
+  assert.equal(response.picks[0].place, 'Paris, France');
+  assert.equal(response.picks[0].listedAt, allowed[0].listedAt);
 });

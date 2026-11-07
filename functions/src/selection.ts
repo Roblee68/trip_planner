@@ -58,7 +58,7 @@ export function finalizeResponse(raw: { message: string; picks: { id: string; re
     const item = byId.get(suggestion.id);
     if (!item || seen.has(item.id) || picks.length === 3) continue;
     seen.add(item.id);
-    picks.push({ id: item.id, title: item.title, category: item.category, summary: item.summary, startsAt: item.startsAt, durationHours: item.durationHours, totalCost: item.totalCost, currency: item.currency, distanceKm: item.distanceKm, location: item.location, sourceUrl: item.sourceUrl, verifiedAt: item.verifiedAt, mode: item.mode, reason: suggestion.reason.trim().slice(0, 180) });
+    picks.push({ id: item.id, title: item.title, category: item.category, summary: item.summary, listedAt: item.listedAt, startsAt: item.startsAt, durationHours: item.durationHours, totalCost: item.totalCost, currency: item.currency, distanceKm: item.distanceKm, location: item.location, place: item.place, sourceUrl: item.sourceUrl, verifiedAt: item.verifiedAt, mode: item.mode, reason: suggestion.reason.trim().slice(0, 180) });
   }
   return { message: raw.message.trim().slice(0, 260), picks, followUp: raw.followUp?.trim().slice(0, 140) || null, mode: allowed[0]?.mode ?? 'sample' };
 }

@@ -3,6 +3,7 @@ export type Candidate = {
   title: string;
   category: string;
   summary: string;
+  listedAt: string;
   startsAt: string;
   durationHours: number;
   totalCost: number;
@@ -35,12 +36,14 @@ export type ScoutPick = {
   title: string;
   category: string;
   summary: string;
+  listedAt: string;
   startsAt: string;
   durationHours: number;
   totalCost: number;
   currency: string;
   distanceKm: number;
   location: string;
+  place: string;
   sourceUrl: string | null;
   verifiedAt: string | null;
   mode: 'sample' | 'live';

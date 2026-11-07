@@ -6,6 +6,7 @@ export type Experience = {
   format: string;
   summary: string;
   location: string;
+  place?: string;
   distanceKm: number;
   totalCost: number;
   durationHours: number;
