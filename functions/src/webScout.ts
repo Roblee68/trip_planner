@@ -93,6 +93,7 @@ export async function scoutWeb(request: ScoutRequest): Promise<ScoutResponse> {
   try { parsed = JSON.parse(response.output_text); } catch { parsed = null; }
   const ideas = eligibleWebIdeas(parsed, searchedUrls(response), request);
   if (!ideas.length) return { message: request.occasion === 'today' ? 'No source-linked activity for today met your time, budget and location settings. Try more time or a wider radius.' : request.occasion === 'route' ? 'No source-linked stop matched this journey yet. Try a named highway or town, a longer detour, or another travel day.' : 'I could not find a source-linked activity I can show confidently yet. Try another interest, place or date.', picks: [], followUp: null, mode: 'web', ideas: [] };
-  const intro = parsed && typeof parsed === 'object' && typeof (parsed as { intro?: unknown }).intro === 'string' ? (parsed as { intro: string }).intro.trim().slice(0, 220) : '';
+  const fullIntro = parsed && typeof parsed === 'object' && typeof (parsed as { intro?: unknown }).intro === 'string' ? (parsed as { intro: string }).intro.trim() : '';
+  const intro = fullIntro.length > 220 ? `${fullIntro.slice(0, 216).replace(/\s+\S*$/, '').trim()}…` : fullIntro;
   return { message: intro || `A few possibilities near ${request.place}, chosen for your interests.`, picks: [], followUp: 'Check the organizer source before making plans.', mode: 'web', ideas };
 }
