@@ -21,7 +21,8 @@ type Pick = {
   mode: 'sample' | 'live'; reason: string;
 };
 export type ScoutCitation = { startIndex: number; endIndex: number; url: string; title: string };
-type ScoutResponse = { message: string; picks: Pick[]; followUp: string | null; mode: 'sample' | 'live' | 'web'; citations?: ScoutCitation[] };
+export type WebIdea = { id: string; title: string; summary: string; reason: string; dateText: string; priceText: string; venue: string; address: string | null; place: string; sourceUrl: string; foundAt: string };
+type ScoutResponse = { message: string; picks: Pick[]; followUp: string | null; mode: 'sample' | 'live' | 'web'; citations?: ScoutCitation[]; ideas?: WebIdea[] };
 
 export function pickToExperience(pick: Pick): Experience {
   const category: Category = validCategories.includes(pick.category as Category) ? pick.category as Category : 'Learning';

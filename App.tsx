@@ -14,10 +14,10 @@ import { planReminders } from './src/reminders';
 import { listenForSourceTaps, phoneAlertsAllowed, requestPhoneAlerts, sendSampleAlert, syncPhoneReminders } from './src/phoneAlerts';
 import { dailyScoutConfigured, getDailyPushToken, saveDailyScoutSubscription } from './src/dailyScout';
 import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/agent';
-import { askRemoteScout, pickToExperience, remoteScoutConfigured, type ScoutCitation } from './src/remoteScout';
+import { askRemoteScout, pickToExperience, remoteScoutConfigured, type ScoutCitation, type WebIdea } from './src/remoteScout';
 
 type Tab = 'Discover' | 'Now' | 'Along the Way' | 'Saved' | 'Settings';
-type StoredState = { preferences: Preferences; feedback: Feedback; savedIds: string[]; savedItems: Experience[] };
+type StoredState = { preferences: Preferences; feedback: Feedback; savedIds: string[]; savedItems: Experience[]; savedWebIdeas: WebIdea[] };
 const STORAGE_KEY = 'pbb-local-state-v1';
 const tabs: Tab[] = ['Discover', 'Now', 'Along the Way', 'Saved', 'Settings'];
 const ink = '#103D46';
@@ -89,6 +89,7 @@ export default function App() {
   const [feedback, setFeedback] = useState<Feedback>({});
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [savedItems, setSavedItems] = useState<Experience[]>([]);
+  const [savedWebIdeas, setSavedWebIdeas] = useState<WebIdea[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [lastPassed, setLastPassed] = useState<{ item: Experience; wasSaved: boolean } | null>(null);
   const [experiences, setExperiences] = useState<Experience[]>(remoteScoutConfigured ? [] : sampleExperiences);
@@ -115,6 +116,8 @@ export default function App() {
   const [agentMode, setAgentMode] = useState<DiscoveryMode>('balanced');
   const [remoteSuggestions, setRemoteSuggestions] = useState<{ item: Experience; reason: string }[]>([]);
   const [remoteItems, setRemoteItems] = useState<Experience[]>([]);
+  const [homeWebIdeas, setHomeWebIdeas] = useState<WebIdea[]>([]);
+  const [searchWebIdeas, setSearchWebIdeas] = useState<WebIdea[]>([]);
   const [scoutLoading, setScoutLoading] = useState(false);
   const [scoutMessage, setScoutMessage] = useState('');
   const [scoutCitations, setScoutCitations] = useState<ScoutCitation[]>([]);
@@ -135,17 +138,18 @@ export default function App() {
         if (saved.feedback) setFeedback(saved.feedback);
         if (saved.savedIds) setSavedIds(saved.savedIds);
         if (Array.isArray(saved.savedItems)) setSavedItems(saved.savedItems.filter(item => item?.mode === 'live' && typeof item.id === 'string' && item.sourceUrl?.startsWith('https://')).slice(0, 100));
+        if (Array.isArray(saved.savedWebIdeas)) setSavedWebIdeas(saved.savedWebIdeas.filter(idea => idea && typeof idea.id === 'string' && idea.sourceUrl?.startsWith('https://')).slice(0, 100));
       }
     }).catch(() => {}).finally(() => setHydrated(true));
   }, []);
   useEffect(() => {
-    if (hydrated) AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ preferences, feedback, savedIds, savedItems })).catch(() => {});
-  }, [preferences, feedback, savedIds, savedItems, hydrated]);
+    if (hydrated) AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ preferences, feedback, savedIds, savedItems, savedWebIdeas })).catch(() => {});
+  }, [preferences, feedback, savedIds, savedItems, savedWebIdeas, hydrated]);
   useEffect(() => { const subscription = listenForSourceTaps(); return () => subscription.remove(); }, []);
   useEffect(() => {
     catalog.load().then(result => setExperiences(result.items)).catch(() => setExperiences([])).finally(() => setCatalogLoading(false));
   }, []);
-  useEffect(() => { setRemoteSuggestions([]); setRemoteItems([]); setHomeScoutMessage(''); setHomeScoutCitations([]); setActiveRequest(null); setSerendipityPick(null); setSerendipityTried(false); }, [preferences.place, preferences.currency]);
+  useEffect(() => { setRemoteSuggestions([]); setRemoteItems([]); setHomeWebIdeas([]); setSearchWebIdeas([]); setHomeScoutMessage(''); setHomeScoutCitations([]); setActiveRequest(null); setSerendipityPick(null); setSerendipityTried(false); }, [preferences.place, preferences.currency]);
   useEffect(() => { if (!(preferences.travelModes ?? []).includes(travelMode)) setTravelMode((preferences.travelModes ?? [])[0] ?? 'walk'); }, [preferences.travelModes, travelMode]);
 
   const showingTorontoSamples = (/^(toronto)(?:\b|,)/i.test(preferences.place.trim()) || /^ontario(?:,?\s*canada)?$/i.test(preferences.place.trim())) && preferences.currency === 'CAD';
@@ -164,10 +168,12 @@ export default function App() {
       setAutoScoutStatus('Your scout is checking for ideas…');
       setHomeScoutMessage('');
       setHomeScoutCitations([]);
+      setHomeWebIdeas([]);
       try {
         const result = await askRemoteScout('Find experiences that match my saved interests and practical limits', preferences, 'balanced');
         if (cancelled) return;
         setRemoteItems(result.picks.map(pickToExperience));
+        setHomeWebIdeas((result.ideas ?? []).filter(idea => feedback[idea.id] !== 'pass'));
         setHomeScoutMessage(result.message);
         setHomeScoutCitations(result.citations ?? []);
         setAutoScoutStatus(result.mode === 'web' ? 'Your scout checked the public web.' : result.mode === 'live' ? 'Your scout checked source-linked ideas.' : 'Your scout found sample ideas.');
@@ -286,6 +292,7 @@ export default function App() {
     setAgentMode(refinement);
     setScoutMessage('');
     setScoutCitations([]);
+    setSearchWebIdeas([]);
     if (!remoteScoutConfigured) { setScoutMessage('Preview mode: showing matching sample ideas below. Live AI search is not connected yet.'); return; }
     if (!preferences.place.trim() || !/^[A-Z]{3}$/.test(preferences.currency)) { setScoutMessage('Enter a city, country, and three-letter currency in Settings first.'); return; }
     setScoutLoading(true);
@@ -294,6 +301,7 @@ export default function App() {
       const suggestions = result.picks.map(pick => ({ item: pickToExperience(pick), reason: pick.reason }));
       setRemoteSuggestions(suggestions);
       setRemoteItems(current => [...suggestions.map(suggestion => suggestion.item), ...current.filter(item => !suggestions.some(suggestion => suggestion.item.id === item.id))]);
+      setSearchWebIdeas((result.ideas ?? []).filter(idea => feedback[idea.id] !== 'pass'));
       setScoutMessage(result.message);
       setScoutCitations(result.citations ?? []);
     } catch (error) {
@@ -302,6 +310,28 @@ export default function App() {
     } finally { setScoutLoading(false); }
   };
   const itemCard = (item: Experience) => <Card key={item.id} item={item} distanceUnit={preferences.distanceUnit} saved={savedIds.includes(item.id)} loved={feedback[item.id] === 'love'} onOpen={() => setSelected(item)} onSave={() => toggleSaved(item)} onLove={() => setFeedback(current => { const next = { ...current }; if (next[item.id] === 'love') delete next[item.id]; else next[item.id] = 'love'; return next; })} onPass={() => { setFeedback(current => ({ ...current, [item.id]: 'pass' })); setSavedIds(current => current.filter(id => id !== item.id)); setSavedItems(current => current.filter(value => value.id !== item.id)); setLastPassed({ item, wasSaved: savedIds.includes(item.id) }); }} />;
+  const webIdeaCard = (idea: WebIdea) => {
+    const saved = savedWebIdeas.some(item => item.id === idea.id);
+    const directions = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(idea.address ? `${idea.venue}, ${idea.address}` : `${idea.venue}, ${idea.place}`)}`;
+    const sourceName = idea.sourceUrl.replace(/^https:\/\//, '').split('/')[0];
+    return <View key={idea.id} style={styles.webCard}>
+      <Text style={styles.webKicker}>✦  FOUND FOR YOU · PUBLIC SOURCE</Text>
+      <Text style={styles.webTitle}>{idea.title}</Text>
+      <Text style={styles.webMeta} numberOfLines={2}>{[idea.dateText, idea.priceText].filter(Boolean).join(' · ') || 'Check the source for dates and cost'}</Text>
+      <Text style={styles.webVenue}>{idea.venue} · {idea.place}</Text>
+      <Text style={styles.webSource}>Source: {sourceName}</Text>
+      <View style={styles.cardActions}>
+        <Action label="Go to site ↗" onPress={() => { void Linking.openURL(idea.sourceUrl); }} small />
+        <Action label="Directions" onPress={() => { void Linking.openURL(directions); }} secondary small />
+        <Action label={saved ? 'Saved ✓' : 'Save'} onPress={() => setSavedWebIdeas(current => saved ? current.filter(item => item.id !== idea.id) : [idea, ...current].slice(0, 100))} secondary small />
+        <Pressable onPress={() => setFeedback(current => { const next = { ...current }; if (next[idea.id] === 'love') delete next[idea.id]; else next[idea.id] = 'love'; return next; })} style={styles.textAction}><Text style={styles.textActionLabel}>{feedback[idea.id] === 'love' ? 'Loved ✓' : 'Love'}</Text></Pressable>
+        <Pressable onPress={() => { setFeedback(current => ({ ...current, [idea.id]: 'pass' })); setHomeWebIdeas(current => current.filter(item => item.id !== idea.id)); setSearchWebIdeas(current => current.filter(item => item.id !== idea.id)); setSavedWebIdeas(current => current.filter(item => item.id !== idea.id)); }} style={styles.textAction}><Text style={styles.textActionLabel}>Pass</Text></Pressable>
+      </View>
+      {idea.reason ? <Text style={styles.webReason} numberOfLines={2}>WHY IT FITS · {idea.reason}</Text> : null}
+      <Text style={styles.webSummary} numberOfLines={3}>{idea.summary}</Text>
+      <Text style={styles.webDisclaimer}>Confirm the date, availability, price and weather with the organizer before leaving.</Text>
+    </View>;
+  };
   const undoPass = () => {
     if (!lastPassed) return;
     setFeedback(current => { const next = { ...current }; delete next[lastPassed.item.id]; return next; });
@@ -328,9 +358,10 @@ export default function App() {
       </View> : tab === 'Discover' ? <View>
         <ImageBackground source={require('./assets/discovery-hero-v2.png')} style={styles.heroImage} imageStyle={styles.heroImageCorners}><Text style={styles.heroKicker}>MAKE A STORY OF IT</Text><Text style={styles.heroTitle}>{'Find the\nunexpected.'}</Text></ImageBackground>
         <View style={styles.homeIntro}><View style={styles.homeIntroText}><Text style={styles.sectionKicker}>LOCAL INSPIRATION</Text><Text style={styles.homeTitle}>{showingTorontoSamples ? 'Toronto ideas.' : `${preferences.place.split(',')[0].trim() || 'Local'} ideas.`}</Text></View><Pressable onPress={() => setTab('Settings')} style={styles.placeButton}><Text style={styles.placeButtonText}>⌖  Change place</Text></Pressable></View>
-        <Text style={styles.homeLead}>{showingTorontoSamples ? 'Three Toronto sample ideas and two sponsored placement previews. These are examples, not confirmed events.' : homeScoutCitations.length ? `Your scout found source-linked ideas for ${preferences.place}. Check each source before making plans.` : remoteScoutConfigured ? `Your scout checks current public sources for activities that fit your settings in ${preferences.place}.` : `No source-linked ideas for ${preferences.place} yet. The live web scout is being connected.`}</Text>
+        <Text style={styles.homeLead}>{showingTorontoSamples ? 'Three Toronto sample ideas and two sponsored placement previews. These are examples, not confirmed events.' : homeWebIdeas.length || homeScoutCitations.length ? `Your scout found source-linked ideas for ${preferences.place}. Check each source before making plans.` : remoteScoutConfigured ? `Your scout checks current public sources for activities that fit your settings in ${preferences.place}.` : `No source-linked ideas for ${preferences.place} yet. The live web scout is being connected.`}</Text>
         {autoScoutStatus ? <Text style={styles.scoutStatus}>✦  {autoScoutStatus}</Text> : null}
-        {homeScoutCitations.length ? <CitedScoutText message={homeScoutMessage} citations={homeScoutCitations} /> : homeScoutMessage ? <Text style={styles.notice}>{homeScoutMessage}</Text> : null}
+        {homeWebIdeas.length ? <Text style={styles.webIntro}>{homeScoutMessage}</Text> : homeScoutCitations.length ? <CitedScoutText message={homeScoutMessage} citations={homeScoutCitations} /> : homeScoutMessage ? <Text style={styles.notice}>{homeScoutMessage}</Text> : null}
+        {homeWebIdeas.map(webIdeaCard)}
         <Pressable onPress={() => setSearchOpen(value => !value)} style={styles.searchToggle} accessibilityRole="button" accessibilityState={{ expanded: searchOpen }}><Text style={styles.searchToggleText}>⌕  Search and refine</Text><Text style={styles.searchChevron}>{searchOpen ? '−' : '+'}</Text></Pressable>
         {searchOpen && <View style={styles.searchPanel}>
           <TextInput value={query} onChangeText={setQuery} placeholder="Search ideas: dance, pottery, outdoors…" placeholderTextColor="#6C8285" style={styles.search} returnKeyType="search" />
@@ -343,8 +374,8 @@ export default function App() {
           </View>
           {activeRequest !== null && <View style={styles.agentResults}><View style={styles.rowBetween}><Text style={styles.subheading}>A few ideas for you</Text><Pressable onPress={() => { setActiveRequest(null); setAgentPrompt(''); }}><Text style={styles.clearText}>Clear</Text></Pressable></View>
             <Text style={styles.resultIntro}>{activeRequest.trim() ? `For “${activeRequest.trim()}”` : 'Based on your interests and practical limits'}</Text>
-            {scoutCitations.length ? <CitedScoutText message={scoutMessage} citations={scoutCitations} /> : scoutMessage ? <Text style={styles.notice}>{scoutMessage}</Text> : null}
-            {scoutLoading ? <Text style={styles.notice}>Your scout is looking…</Text> : scoutCitations.length ? null : agentSuggestions.length ? agentSuggestions.map(suggestion => <View key={suggestion.item.id}><Text style={styles.whyText}>WHY IT FITS · {suggestion.reasons.join(' · ')}</Text>{itemCard(suggestion.item)}</View>) : <View style={styles.empty}><Text style={styles.emptyTitle}>{showingTorontoSamples && !remoteScoutConfigured ? 'No close match in these sample ideas.' : `No verified match for ${preferences.place} yet.`}</Text><Text style={styles.summary}>{showingTorontoSamples && !remoteScoutConfigured ? 'Try another interest, more time, a larger budget, or a wider radius.' : 'Try another interest or adjust your budget or radius. Real listings need verified organizer sources.'}</Text></View>}
+            {searchWebIdeas.length ? <Text style={styles.webIntro}>{scoutMessage}</Text> : scoutCitations.length ? <CitedScoutText message={scoutMessage} citations={scoutCitations} /> : scoutMessage ? <Text style={styles.notice}>{scoutMessage}</Text> : null}
+            {scoutLoading ? <Text style={styles.notice}>Your scout is looking…</Text> : searchWebIdeas.length ? searchWebIdeas.map(webIdeaCard) : scoutCitations.length ? null : agentSuggestions.length ? agentSuggestions.map(suggestion => <View key={suggestion.item.id}><Text style={styles.whyText}>WHY IT FITS · {suggestion.reasons.join(' · ')}</Text>{itemCard(suggestion.item)}</View>) : <View style={styles.empty}><Text style={styles.emptyTitle}>{showingTorontoSamples && !remoteScoutConfigured ? 'No close match in these sample ideas.' : `No verified match for ${preferences.place} yet.`}</Text><Text style={styles.summary}>{showingTorontoSamples && !remoteScoutConfigured ? 'Try another interest, more time, a larger budget, or a wider radius.' : 'Try another interest or adjust your budget or radius. Real listings need verified organizer sources.'}</Text></View>}
             <View style={styles.chipRow}><Pill label="Something different" active={agentMode === 'different'} onPress={() => runScout(activeRequest, 'different')} /><Pill label="Cheaper" active={agentMode === 'cheaper'} onPress={() => runScout(activeRequest, 'cheaper')} /><Pill label="Closer" active={agentMode === 'closer'} onPress={() => runScout(activeRequest, 'closer')} /></View>
           </View>}
         </View>}
@@ -361,7 +392,7 @@ export default function App() {
         </View>}
         {alerts.length > 0 && <Pressable onPress={() => setTab('Settings')} style={styles.alertBanner}><Text style={styles.alertBannerTitle}>✦ {alerts.length} timely {alerts.length === 1 ? 'find' : 'finds'} for you</Text><Text style={styles.alertBannerBody}>See what fits your interests →</Text></Pressable>}
         <View style={styles.rowBetween}><Text style={styles.subheading}>{showDiverse ? 'A different direction' : showingTorontoSamples ? 'Toronto sample ideas' : 'Local ideas for you'}</Text><Text style={styles.resultCount}>{homeOrganicItems.length} shown</Text></View>
-        {catalogLoading ? <Text style={styles.notice}>Loading ideas…</Text> : homeOrganicItems.length ? homeOrganicItems.map(item => <View key={item.id}><Text style={styles.whyText}>{fitReason(item)}</Text>{itemCard(item)}</View>) : homeScoutCitations.length ? <Text style={styles.helper}>Open the cited sources above to check these ideas with their organizers.</Text> : <View style={styles.empty}><Text style={styles.emptyTitle}>No ideas here yet.</Text><Text style={styles.summary}>{remoteScoutConfigured ? 'Try another interest, budget, or travel radius in Settings.' : 'Live web discoveries are not connected in this preview yet.'}</Text></View>}
+        {catalogLoading ? <Text style={styles.notice}>Loading ideas…</Text> : homeOrganicItems.length ? homeOrganicItems.map(item => <View key={item.id}><Text style={styles.whyText}>{fitReason(item)}</Text>{itemCard(item)}</View>) : homeWebIdeas.length || homeScoutCitations.length ? <Text style={styles.helper}>Open each source above to check the latest details with the organizer.</Text> : <View style={styles.empty}><Text style={styles.emptyTitle}>No ideas here yet.</Text><Text style={styles.summary}>{remoteScoutConfigured ? 'Try another interest, budget, or travel radius in Settings.' : 'Live web discoveries are not connected in this preview yet.'}</Text></View>}
         {sponsoredPreviews.length > 0 && <View style={styles.sponsoredSection}><View style={styles.rowBetween}><Text style={styles.sponsoredKicker}>SPONSORED SPOTS</Text><Text style={styles.sponsoredPreview}>PREVIEW</Text></View><Text style={styles.sponsoredDisclosure}>Two examples of paid placement. No partner has paid for these sample listings; sponsorship does not affect the ideas above.</Text>{sponsoredPreviews.map(itemCard)}</View>}
         {!showMoreIdeas && organicItems.length > 3 && !searchOpen && <Action label="See more local ideas" onPress={() => setShowMoreIdeas(true)} secondary />}
         <Action label={showDiverse ? 'Back to your picks' : 'Show me something different'} onPress={() => setShowDiverse(value => !value)} secondary />
@@ -378,8 +409,9 @@ export default function App() {
         {ranked.filter(item => item.alongWay).map(itemCard)}
       </View> : tab === 'Saved' ? <View>
         <Text style={styles.sectionKicker}>YOUR SHORTLIST</Text><Text style={styles.h1}>Saved for later.</Text><Text style={styles.lead}>Keep possibilities close across places. Recheck each live source before making plans.</Text>
+        {savedWebIdeas.map(webIdeaCard)}
         {savedVisible.map(itemCard)}
-        {!savedVisible.length && <View style={styles.empty}><Text style={styles.emptyTitle}>No saved ideas yet.</Text><Text style={styles.summary}>Save an experience from Discover to find it here.</Text><Action label="Explore ideas" onPress={() => setTab('Discover')} small /></View>}
+        {!savedVisible.length && !savedWebIdeas.length && <View style={styles.empty}><Text style={styles.emptyTitle}>No saved ideas yet.</Text><Text style={styles.summary}>Save an experience from Discover to find it here.</Text><Action label="Explore ideas" onPress={() => setTab('Discover')} small /></View>}
       </View> : <View>
         <Text style={styles.sectionKicker}>MAKE IT YOURS</Text><Text style={styles.h1}>Settings.</Text><Text style={styles.lead}>Choose your place, interests and practical limits. Changes are saved on this device.</Text>
         <Text style={styles.subheading}>Exploring</Text>
@@ -440,6 +472,7 @@ const styles = StyleSheet.create({
   back: { color: sea, fontWeight: '700', marginBottom: 18 }, detailArt: { borderRadius: 18, height: 190, alignItems: 'center', justifyContent: 'center', marginBottom: 22 }, detailGlyph: { color: '#FFFFFF', fontSize: 100, lineHeight: 110 }, detailCategory: { color: '#FFFFFF', fontWeight: '900', letterSpacing: 2 }, infoPanel: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, marginBottom: 20 }, infoText: { color: ink, fontSize: 14, marginBottom: 10 },
   alertCard: { backgroundColor: '#FFF0EA', padding: 18, borderRadius: 16, marginBottom: 12 }, alertTag: { color: '#BB4A34', fontWeight: '800', textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.8 }, alertTitle: { color: ink, fontSize: 17, fontWeight: '800', marginVertical: 8 }, alertLink: { color: sea, fontWeight: '800', fontSize: 12 }, settingsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderColor: '#E3E7E3' }, numberInput: { width: 76, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C9DCDA', borderRadius: 10, textAlign: 'center', padding: 9, color: ink, fontWeight: '800' }, setting: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderColor: '#E3E7E3' }, toggle: { width: 44, height: 26, borderRadius: 13, backgroundColor: '#C9DCDA', padding: 3 }, toggleOn: { backgroundColor: '#18B8B0' }, toggleKnob: { width: 20, height: 20, backgroundColor: '#FFFFFF', borderRadius: 10 }, toggleKnobOn: { alignSelf: 'flex-end' },
   sourceHeading: { color: ink, fontWeight: '900', fontSize: 10, letterSpacing: 1.3, marginTop: 18, marginBottom: 9 }, sourceLink: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C9E7E0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8 }, sourceLinkText: { color: sea, fontWeight: '800', fontSize: 13 },
+  webIntro: { color: muted, fontSize: 14, lineHeight: 20, marginBottom: 14 }, webCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderLeftWidth: 4, borderColor: '#D7E8E3', borderLeftColor: '#18B8B0', borderRadius: 19, padding: 18, marginBottom: 16 }, webKicker: { color: sea, fontSize: 10, fontWeight: '900', letterSpacing: 1.1, marginBottom: 9 }, webTitle: { color: ink, fontSize: 21, lineHeight: 26, fontWeight: '900', marginBottom: 8 }, webMeta: { color: ink, fontSize: 13, fontWeight: '800', marginBottom: 5 }, webVenue: { color: muted, fontSize: 12, marginBottom: 12 }, webReason: { color: sea, fontSize: 11, fontWeight: '800', marginBottom: 10 }, webSummary: { color: muted, fontSize: 13, lineHeight: 19 }, webSource: { color: sea, fontSize: 11, fontWeight: '700', marginTop: 14 }, webDisclaimer: { color: '#61767A', fontSize: 10, lineHeight: 15, marginTop: 8 },
   scoutStatus: { color: sea, fontSize: 11, fontWeight: '700', marginBottom: 12 }, deadlineText: { color: '#BB4A34', fontSize: 12, fontWeight: '800', marginBottom: 8 },
   homeIntro: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 8, marginBottom: 6 }, homeIntroText: { flex: 1 }, homeTitle: { color: ink, fontSize: 28, lineHeight: 32, fontWeight: '800', letterSpacing: -0.8 }, homeLead: { color: muted, fontSize: 13, lineHeight: 19, marginBottom: 16 }, placeButton: { paddingVertical: 8, paddingHorizontal: 9, borderRadius: 18, backgroundColor: '#E4F7F3', marginBottom: 4 }, placeButtonText: { color: sea, fontSize: 11, fontWeight: '800' },
   settingsButton: { backgroundColor: '#E1F4F0', borderRadius: 18, paddingHorizontal: 11, paddingVertical: 9 }, settingsButtonText: { color: sea, fontSize: 12, fontWeight: '800' }, searchToggle: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C9DCDA', borderRadius: 16, paddingHorizontal: 17, paddingVertical: 14, marginBottom: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, searchToggleText: { color: ink, fontSize: 15, fontWeight: '800' }, searchChevron: { color: sea, fontSize: 23, lineHeight: 25, fontWeight: '500' }, searchPanel: { marginBottom: 14 },

@@ -57,10 +57,25 @@ export type ScoutPick = {
   reason: string;
 };
 
+export type WebIdea = {
+  id: string;
+  title: string;
+  summary: string;
+  reason: string;
+  dateText: string;
+  priceText: string;
+  venue: string;
+  address: string | null;
+  place: string;
+  sourceUrl: string;
+  foundAt: string;
+};
+
 export type ScoutResponse = {
   message: string;
   picks: ScoutPick[];
   followUp: string | null;
   mode: 'sample' | 'live' | 'web';
   citations?: { startIndex: number; endIndex: number; url: string; title: string }[];
+  ideas?: WebIdea[];
 };
