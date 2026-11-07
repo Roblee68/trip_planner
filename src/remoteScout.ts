@@ -29,7 +29,7 @@ export function pickToExperience(pick: Pick): Experience {
     durationHours: pick.durationHours, totalCost: pick.totalCost, currency: pick.currency,
     distanceKm: pick.distanceKm, location: pick.location, sourceUrl: pick.sourceUrl ?? undefined,
     verifiedAt: pick.verifiedAt ?? undefined, mode: pick.mode, listedAt: pick.verifiedAt || new Date().toISOString(),
-    format: 'Experience', tags: [], alongWay: false, accent: '#D8E9DD',
+    format: 'Experience', tags: [], alongWay: false, accent: '#18B8B0',
   };
 }
 

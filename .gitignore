@@ -10,3 +10,5 @@ functions/lib/
 !.env.example
 .secret.local
 functions/.secret.local
+.DS_Store
+PB&B_Brand_Guide.pdf

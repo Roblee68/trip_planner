@@ -2,6 +2,8 @@
 
 An iOS and Android experience discovery app. People choose any city and country, a three-letter currency, interests, a budget, and a travel radius. The app offers a discovery feed, a personal scout, saved ideas, spontaneous outings, and timely in-app finds.
 
+The app uses the initial PB&B palette and voice: Ice White, Deep Teal, Fresh Aqua, Adventure Lime, and sparing Spontaneous Coral. The brand guide remains local because it is marked internal. The wordmark, final typeface, accessibility states, and image library are still pending approval before a public release.
+
 ## Run locally
 
 ```sh
