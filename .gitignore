@@ -3,3 +3,10 @@ node_modules/
 dist/
 web-build/
 *.log
+functions/node_modules/
+functions/lib/
+.env
+.env.*
+!.env.example
+.secret.local
+functions/.secret.local

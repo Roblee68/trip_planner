@@ -1,0 +1,3 @@
+{
+  "functions": [{ "source": "functions", "codebase": "pbb", "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"] }]
+}

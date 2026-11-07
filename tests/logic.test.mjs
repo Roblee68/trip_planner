@@ -24,3 +24,11 @@ test('alerts require recent, relevant, timely listings within practical limits',
   assert.deepEqual(opportunityAlerts(items, defaultPreferences, {}, []).map(x => x.item.id), ['yes']);
   assert.deepEqual(opportunityAlerts(items, { ...defaultPreferences, alertsEnabled: false }, {}, []), []);
 });
+
+test('live alerts need a recent source check and a linked source', () => {
+  const base = { ...item('live', 'Dance', 10, 5, 3), mode: 'live', currency: 'CAD', sourceUrl: 'https://organizer.example/event', verifiedAt: new Date().toISOString() };
+  assert.equal(opportunityAlerts([base], defaultPreferences, {}, []).length, 1);
+  assert.equal(opportunityAlerts([{ ...base, sourceUrl: undefined }], defaultPreferences, {}, []).length, 0);
+  assert.equal(opportunityAlerts([{ ...base, verifiedAt: daysFromNow(-3) }], defaultPreferences, {}, []).length, 0);
+  assert.equal(opportunityAlerts([{ ...base, currency: 'EUR' }], defaultPreferences, {}, []).length, 0);
+});

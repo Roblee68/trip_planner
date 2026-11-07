@@ -14,10 +14,16 @@ export type Experience = {
   tags: string[];
   alongWay: boolean;
   accent: string;
+  sourceUrl?: string;
+  verifiedAt?: string;
+  currency?: string;
+  mode?: 'sample' | 'live';
 };
 export type Feedback = Record<string, 'love' | 'pass'>;
 export type Preferences = {
   interests: Category[];
+  place: string;
+  currency: string;
   maxBudget: number;
   maxDistanceKm: number;
   alertsEnabled: boolean;
@@ -29,6 +35,8 @@ export const categories: Category[] = ['Dance', 'Outdoors', 'Arts', 'Food', 'Lea
 
 export const defaultPreferences: Preferences = {
   interests: ['Dance', 'Arts', 'Outdoors'],
+  place: '',
+  currency: 'CAD',
   maxBudget: 100,
   maxDistanceKm: 30,
   alertsEnabled: true,
@@ -47,7 +55,7 @@ export function daysUntil(date: string, now = new Date()): number {
 }
 
 export function withinLimits(item: Experience, preferences: Preferences): boolean {
-  return item.totalCost <= preferences.maxBudget && item.distanceKm <= preferences.maxDistanceKm;
+  return (item.currency ?? 'CAD') === preferences.currency && item.totalCost <= preferences.maxBudget && item.distanceKm <= preferences.maxDistanceKm;
 }
 
 export function score(item: Experience, preferences: Preferences, feedback: Feedback, savedIds: string[], items: Experience[] = []): number {
@@ -80,13 +88,15 @@ export function opportunityAlerts(items: Experience[], preferences: Preferences,
   return items.flatMap(item => {
     const days = daysUntil(item.startsAt, now);
     const age = (now.getTime() - new Date(item.listedAt).getTime()) / 86_400_000;
+    const verificationAge = item.verifiedAt ? (now.getTime() - new Date(item.verifiedAt).getTime()) / 86_400_000 : Infinity;
     const watched = preferences.savedAlerts && savedIds.includes(item.id);
     const relevant = preferences.interests.includes(item.category) || watched;
     if (!relevant || !withinLimits(item, preferences) || feedback[item.id] === 'pass' || days < 0 || days > 21 || age < 0 || age > 7) return [];
+    if (item.mode === 'live' && (!item.sourceUrl?.startsWith('https://') || verificationAge < 0 || verificationAge > 2)) return [];
     const isFree = preferences.freeAlerts && item.totalCost === 0;
     const reason = watched ? 'A saved interest has a new date' : isFree ? 'A free opportunity in your interests' : 'New and starting soon';
     return [{ item, reason, priority: (watched ? 30 : 0) + (isFree ? 20 : 0) + (21 - days) }];
   }).sort((a, b) => b.priority - a.priority);
 }
 
-export function money(amount: number): string { return amount === 0 ? 'Free' : `$${amount} CAD`; }
+export function money(amount: number, currency = 'CAD'): string { return amount === 0 ? 'Free' : `${amount} ${currency}`; }
