@@ -118,6 +118,8 @@ export default function App() {
   const [scoutMessage, setScoutMessage] = useState('');
   const [scoutCitations, setScoutCitations] = useState<ScoutCitation[]>([]);
   const [autoScoutStatus, setAutoScoutStatus] = useState('');
+  const [homeScoutMessage, setHomeScoutMessage] = useState('');
+  const [homeScoutCitations, setHomeScoutCitations] = useState<ScoutCitation[]>([]);
   const [phoneAlertMessage, setPhoneAlertMessage] = useState('');
   const [dailyScoutMessage, setDailyScoutMessage] = useState('');
   const [locationMessage, setLocationMessage] = useState('');
@@ -142,7 +144,7 @@ export default function App() {
   useEffect(() => {
     catalog.load().then(result => setExperiences(result.items)).catch(() => setExperiences([])).finally(() => setCatalogLoading(false));
   }, []);
-  useEffect(() => { setRemoteSuggestions([]); setRemoteItems([]); setActiveRequest(null); setSerendipityPick(null); setSerendipityTried(false); }, [preferences.place, preferences.currency]);
+  useEffect(() => { setRemoteSuggestions([]); setRemoteItems([]); setHomeScoutMessage(''); setHomeScoutCitations([]); setActiveRequest(null); setSerendipityPick(null); setSerendipityTried(false); }, [preferences.place, preferences.currency]);
   useEffect(() => { if (!(preferences.travelModes ?? []).includes(travelMode)) setTravelMode((preferences.travelModes ?? [])[0] ?? 'walk'); }, [preferences.travelModes, travelMode]);
 
   const showingTorontoSamples = (/^(toronto)(?:\b|,)/i.test(preferences.place.trim()) || /^ontario(?:,?\s*canada)?$/i.test(preferences.place.trim())) && preferences.currency === 'CAD';
@@ -159,11 +161,15 @@ export default function App() {
     let cancelled = false;
     const timer = setTimeout(async () => {
       setAutoScoutStatus('Your scout is checking for ideas…');
+      setHomeScoutMessage('');
+      setHomeScoutCitations([]);
       try {
         const result = await askRemoteScout('Find experiences that match my saved interests and practical limits', preferences, 'balanced');
         if (cancelled) return;
         setRemoteItems(result.picks.map(pickToExperience));
-        setAutoScoutStatus(result.mode === 'live' ? 'Your scout checked source-linked ideas.' : 'Your scout found sample ideas.');
+        setHomeScoutMessage(result.message);
+        setHomeScoutCitations(result.citations ?? []);
+        setAutoScoutStatus(result.mode === 'web' ? 'Your scout checked the public web.' : result.mode === 'live' ? 'Your scout checked source-linked ideas.' : 'Your scout found sample ideas.');
       } catch {
         if (!cancelled) setAutoScoutStatus('Live scout is unavailable right now.');
       }
@@ -323,6 +329,7 @@ export default function App() {
         <View style={styles.homeIntro}><View style={styles.homeIntroText}><Text style={styles.sectionKicker}>LOCAL INSPIRATION</Text><Text style={styles.homeTitle}>{showingTorontoSamples ? 'Toronto ideas.' : `${preferences.place.split(',')[0].trim() || 'Local'} ideas.`}</Text></View><Pressable onPress={() => setTab('Settings')} style={styles.placeButton}><Text style={styles.placeButtonText}>⌖  Change place</Text></Pressable></View>
         <Text style={styles.homeLead}>{showingTorontoSamples ? 'Three Toronto sample ideas and two sponsored placement previews. These are examples, not confirmed events.' : remoteItems.length ? `Ideas for ${preferences.place}. Open each source to check current details.` : `No source-linked ideas for ${preferences.place} yet. The live web scout is being connected.`}</Text>
         {autoScoutStatus ? <Text style={styles.scoutStatus}>✦  {autoScoutStatus}</Text> : null}
+        {homeScoutCitations.length ? <CitedScoutText message={homeScoutMessage} citations={homeScoutCitations} /> : homeScoutMessage ? <Text style={styles.notice}>{homeScoutMessage}</Text> : null}
         <Pressable onPress={() => setSearchOpen(value => !value)} style={styles.searchToggle} accessibilityRole="button" accessibilityState={{ expanded: searchOpen }}><Text style={styles.searchToggleText}>⌕  Search and refine</Text><Text style={styles.searchChevron}>{searchOpen ? '−' : '+'}</Text></Pressable>
         {searchOpen && <View style={styles.searchPanel}>
           <TextInput value={query} onChangeText={setQuery} placeholder="Search ideas: dance, pottery, outdoors…" placeholderTextColor="#6C8285" style={styles.search} returnKeyType="search" />
@@ -353,7 +360,7 @@ export default function App() {
         </View>}
         {alerts.length > 0 && <Pressable onPress={() => setTab('Settings')} style={styles.alertBanner}><Text style={styles.alertBannerTitle}>✦ {alerts.length} timely {alerts.length === 1 ? 'find' : 'finds'} for you</Text><Text style={styles.alertBannerBody}>See what fits your interests →</Text></Pressable>}
         <View style={styles.rowBetween}><Text style={styles.subheading}>{showDiverse ? 'A different direction' : showingTorontoSamples ? 'Toronto sample ideas' : 'Local ideas for you'}</Text><Text style={styles.resultCount}>{homeOrganicItems.length} shown</Text></View>
-        {catalogLoading ? <Text style={styles.notice}>Loading ideas…</Text> : homeOrganicItems.length ? homeOrganicItems.map(item => <View key={item.id}><Text style={styles.whyText}>{fitReason(item)}</Text>{itemCard(item)}</View>) : <View style={styles.empty}><Text style={styles.emptyTitle}>No ideas here yet.</Text><Text style={styles.summary}>{remoteScoutConfigured ? 'Try another interest, budget, or travel radius in Settings.' : 'Live web discoveries are not connected in this preview yet.'}</Text></View>}
+        {catalogLoading ? <Text style={styles.notice}>Loading ideas…</Text> : homeOrganicItems.length ? homeOrganicItems.map(item => <View key={item.id}><Text style={styles.whyText}>{fitReason(item)}</Text>{itemCard(item)}</View>) : homeScoutCitations.length ? <Text style={styles.helper}>Open the cited sources above to check these ideas with their organizers.</Text> : <View style={styles.empty}><Text style={styles.emptyTitle}>No ideas here yet.</Text><Text style={styles.summary}>{remoteScoutConfigured ? 'Try another interest, budget, or travel radius in Settings.' : 'Live web discoveries are not connected in this preview yet.'}</Text></View>}
         {sponsoredPreviews.length > 0 && <View style={styles.sponsoredSection}><View style={styles.rowBetween}><Text style={styles.sponsoredKicker}>SPONSORED SPOTS</Text><Text style={styles.sponsoredPreview}>PREVIEW</Text></View><Text style={styles.sponsoredDisclosure}>Two examples of paid placement. No partner has paid for these sample listings; sponsorship does not affect the ideas above.</Text>{sponsoredPreviews.map(itemCard)}</View>}
         {!showMoreIdeas && organicItems.length > 3 && !searchOpen && <Action label="See more local ideas" onPress={() => setShowMoreIdeas(true)} secondary />}
         <Action label={showDiverse ? 'Back to your picks' : 'Show me something different'} onPress={() => setShowDiverse(value => !value)} secondary />
