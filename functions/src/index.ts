@@ -13,12 +13,18 @@ const openaiApiKey = defineSecret('OPENAI_API_KEY');
 
 async function checkDailyLimit(uid: string) {
   const day = new Date().toISOString().slice(0, 10);
-  const ref = getFirestore().collection('agentUsage').doc(`${uid}_${day}`);
+  const usage = getFirestore().collection('agentUsage');
+  const ref = usage.doc(`${uid}_${day}`);
+  const globalRef = usage.doc(`global_${day}`);
   await getFirestore().runTransaction(async transaction => {
     const snapshot = await transaction.get(ref);
+    const globalSnapshot = await transaction.get(globalRef);
     const count = Number(snapshot.data()?.count ?? 0);
+    const globalCount = Number(globalSnapshot.data()?.count ?? 0);
     if (count >= 30) throw new HttpsError('resource-exhausted', 'Daily scout limit reached. Please try tomorrow.');
+    if (globalCount >= 40) throw new HttpsError('resource-exhausted', 'The scout is at its preview limit for today. Please try tomorrow.');
     transaction.set(ref, { count: count + 1, updatedAt: new Date().toISOString() }, { merge: true });
+    transaction.set(globalRef, { count: globalCount + 1, updatedAt: new Date().toISOString() }, { merge: true });
   });
 }
 
