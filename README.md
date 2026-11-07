@@ -26,6 +26,8 @@ cd ios && pod install
 
 Open `ios/PBB.xcworkspace` in Xcode and the `android` directory in Android Studio. `npm run ios` or `npm run android` builds and runs a local debug app. The app identifier is `com.roblee.pbandb`; the icon is provisional. The iOS project uses a small config plugin to keep all pods at the app's iOS 16.4 minimum for Xcode 27 and to quote Expo's build script path because this folder contains `&`. The iOS configuration enables Expo's scene lifecycle so a build made with Xcode 27 opens on iOS 27. Local debug builds were verified, and a private development preview was installed on Rob's iPhone. No store submission or Firebase deployment is part of this setup.
 
+The generated Android project was opened in Android Studio on this Mac, and a self-contained private APK was built at `android/app/build/outputs/apk/release/app-release.apk`. It is signed with the generated debug key for device previews only. The local Android build uses the installed Java 21 runtime; Android Studio's bundled Java 25 produced a native build failure here. Android Studio launched from the Dock did not find `node` during its own Gradle sync, although the command-line build succeeds with Node on `PATH`. Reopen Android Studio from a shell that has Node on `PATH` if its sync reports `Cannot run program "node"`. Regenerating `android` may reset these local IDE settings. A device install is pending until the Moto G appears in `adb devices` with USB debugging authorized.
+
 To run the server locally:
 
 ```sh
