@@ -699,7 +699,7 @@ export default function App() {
 
   if (!hydrated) return <SafeAreaView style={styles.safe}><View style={styles.loading}><Text style={styles.brand}>PB&B ✦</Text><Text style={styles.lead}>Getting your ideas ready…</Text></View></SafeAreaView>;
   return <SafeAreaView style={styles.safe}><StatusBar style="dark" />
-    <IncomingShareBoundary>{Platform.OS === 'android' ? <IncomingShare onReceive={receiveShare} /> : null}</IncomingShareBoundary>
+    <IncomingShareBoundary><IncomingShare onReceive={receiveShare} /></IncomingShareBoundary>
     <View style={styles.header}><View style={styles.brandRow}><Image source={require('./assets/pbb-mountain-mark.png')} style={styles.brandMark} accessibilityLabel="PB&B mountain explorer taking a photo" /><View style={styles.brandInfo}><Text style={styles.brand}>PB&B</Text><Text style={styles.brandSub} numberOfLines={1}>Exploring {preferences.place || 'anywhere'}</Text></View></View><Pressable onPress={() => setTab('Settings')} style={styles.settingsButton} accessibilityRole="button" accessibilityLabel="Open settings"><Text style={styles.settingsButtonText}>⚙  Settings</Text></Pressable></View>
     <ScrollView ref={scrollRef} key={selected?.id ?? tab} style={styles.content} contentContainerStyle={styles.contentInner} keyboardShouldPersistTaps="handled">
       {!selected && lastPassed && <View style={styles.undoBanner}><Text style={styles.undoText}>Passed on {lastPassed.item.title}</Text><Pressable onPress={undoPass}><Text style={styles.undoLink}>Undo</Text></Pressable></View>}
@@ -783,10 +783,10 @@ export default function App() {
         <Text style={styles.footerNote}>Stops are possibilities, not a calculated route. Open Check route to compare the actual drive and detour, and confirm the venue’s hours and availability.</Text>
       </View> : tab === 'Saved' ? <View>
         <Text style={styles.sectionKicker}>YOUR SHORTLIST</Text><Text style={styles.h1}>Saved for later.</Text><Text style={styles.lead}>Keep possibilities close across places. Recheck each live source before making plans.</Text>
-        <Pressable onPress={() => setImportOpen(value => !value)} style={styles.importToggle} accessibilityRole="button" accessibilityState={{ expanded: importOpen }}><View style={styles.lookFurtherCopy}><Text style={styles.lookFurtherTitle}>Save a find from social media</Text><Text style={styles.lookFurtherDetail}>{Platform.OS === 'android' ? 'Share a post or screenshot to PB&B, choose a photo, or paste a link.' : 'Choose a photo or screenshot, or paste a post link.'}</Text></View><Text style={styles.lookFurtherArrow}>{importOpen ? '−' : '+'}</Text></Pressable>
+        <Pressable onPress={() => setImportOpen(value => !value)} style={styles.importToggle} accessibilityRole="button" accessibilityState={{ expanded: importOpen }}><View style={styles.lookFurtherCopy}><Text style={styles.lookFurtherTitle}>Save a find from social media</Text><Text style={styles.lookFurtherDetail}>Share a post or screenshot to PB&B, choose a photo, or paste a link.</Text></View><Text style={styles.lookFurtherArrow}>{importOpen ? '−' : '+'}</Text></Pressable>
         {importOpen && <View style={styles.importPanel}>
           <Text style={styles.agentTitle}>Keep something you spotted.</Text>
-          <Text style={styles.importHelp}>{Platform.OS === 'android' ? 'Share a post or image from Instagram, Facebook or another app, or choose a screenshot here.' : 'Choose a photo or screenshot from Instagram, Facebook or another app, or paste its link here.'} Your scout can read visible details and public links. You choose what to save.</Text>
+          <Text style={styles.importHelp}>Share a post or image from Instagram, Facebook or another app, or choose a screenshot here. Your scout can read visible details and public links. You choose what to save.</Text>
           <Action label="Choose photo or screenshot" onPress={() => { void pickImportedScreenshot(); }} secondary />
           {importImageUri ? <><Image source={{ uri: importImageUri }} style={styles.importPreview} resizeMode="cover" /><Action label={importBusy ? 'Reading image…' : 'Read image'} onPress={() => { void readImportedFind('image'); }} small /></> : null}
           <Text style={styles.label}>Post or event link (optional)</Text>

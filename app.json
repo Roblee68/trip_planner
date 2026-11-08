@@ -58,6 +58,15 @@
       [
         "expo-sharing",
         {
+          "ios": {
+            "enabled": true,
+            "appGroupId": "group.com.roblee.pbandb",
+            "activationRule": {
+              "supportsText": true,
+              "supportsWebUrlWithMaxCount": 1,
+              "supportsImageWithMaxCount": 1
+            }
+          },
           "android": {
             "enabled": true,
             "singleShareMimeTypes": [
