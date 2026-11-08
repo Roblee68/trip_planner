@@ -205,9 +205,12 @@ export async function scanImportedFind(input: ImportScanInput): Promise<ImportSc
       console.warn('Photo web lookup returned no readable result', { status: webResponse.status });
       return { finds, webLookup: 'failed' };
     }
-    const merged = mergeWebDetails(finds, webParsed, observedWebUrls(webResponse), today);
+    const observedUrls = observedWebUrls(webResponse);
+    const reportedMatches = webParsed && typeof webParsed === 'object' && Array.isArray((webParsed as { matches?: unknown }).matches)
+      ? (webParsed as { matches: unknown[] }).matches.length : 0;
+    const merged = mergeWebDetails(finds, webParsed, observedUrls, today);
     const matchCount = merged.filter(find => !!find.sourceUrl).length;
-    console.info('Photo web lookup completed', { leads: clues.length, matches: matchCount });
+    console.info('Photo web lookup completed', { leads: clues.length, reportedMatches, observedSources: observedUrls.size, acceptedMatches: matchCount });
     return { finds: merged, webLookup: matchCount ? 'matched' : 'no-match' };
   } catch (error) {
     console.warn('Photo web lookup failed', { name: error instanceof Error ? error.name : 'Unknown' });
