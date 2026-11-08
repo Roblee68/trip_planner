@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { defaultPreferences, daysFromNow, interestTopics, matchedTopics, opportunityAlerts, rankExperiences, topicGroups } from '../src/logic.ts';
+import { defaultPreferences, daysFromNow, interestTopics, matchedTopics, normalizeTopics, opportunityAlerts, rankExperiences, topicGroups } from '../src/logic.ts';
 
 const item = (id, category, cost, km, starts, listed = -1) => ({
   id, title: id, category, format: 'Workshop', summary: '', location: 'Toronto', distanceKm: km,
@@ -42,12 +42,20 @@ test('specific interests match activities and selected travel modes limit the fe
 });
 
 test('expanded interests are unique and forests, metalwork and tours match relevant ideas', () => {
-  assert.equal(interestTopics.length, 71);
+  assert.equal(interestTopics.length, 76);
   assert.equal(new Set(topicGroups.flatMap(group => group.topics)).size, interestTopics.length);
   assert.ok(topicGroups.find(group => group.label === 'Nature and discovery').topics.includes('Forests'));
   assert.ok(topicGroups.find(group => group.label === 'Make, learn and browse').topics.includes('Art'));
   assert.deepEqual(matchedTopics({ ...item('Forest walk and blacksmith workshop', 'Learning', 20, 5, 4), tags: ['forge'] }, ['Forests', 'Metalwork', 'Pottery']), ['Forests', 'Metalwork']);
   assert.deepEqual(matchedTopics(item('Guided wildlife tour', 'Outdoors', 20, 5, 4), ['Guided tours', 'Wildlife tours']), ['Guided tours', 'Wildlife tours']);
+});
+
+test('story, book and custom interests match activities without duplicate entries', () => {
+  const topics = normalizeTopics(['Fantasy and magic', 'Poetry', 'Harry Potter', 'harry potter', 'Star Wars', 'bad <tag>']);
+  assert.deepEqual(topics, ['Fantasy and magic', 'Poetry', 'Harry Potter', 'Star Wars']);
+  assert.deepEqual(matchedTopics(item('Harry Potter reading and poetry night', 'Arts', 12, 3, 5), topics), ['Fantasy and magic', 'Poetry', 'Harry Potter']);
+  assert.deepEqual(matchedTopics(item('Star Wars fan event', 'Arts', 12, 3, 5), topics), ['Star Wars']);
+  assert.deepEqual(matchedTopics(item('Lord of the Rings reading group', 'Arts', 12, 3, 5), ['The Lord of the Rings', 'Book clubs']), ['The Lord of the Rings', 'Book clubs']);
 });
 
 test('open to new ideas lifts an unfamiliar category without creating an alert interest', () => {

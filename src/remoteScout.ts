@@ -2,6 +2,7 @@ import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Category, Experience, Preferences } from './logic';
+import type { ExtractedFind } from './importedFinds';
 
 export const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -57,4 +58,14 @@ export async function askRemoteScout(prompt: string, preferences: Preferences, r
     detourMinutes: route?.detourMinutes, routeTiming: route?.timing,
   });
   return response.data as ScoutResponse;
+}
+
+export async function scanSharedFind(input: { imageBase64?: string; imageMime?: 'image/jpeg' | 'image/png'; sourceUrl?: string; place: string }): Promise<ExtractedFind[]> {
+  if (!remoteScoutConfigured) throw new Error('The live scout is not connected on this device. You can enter the details yourself.');
+  const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  if (!auth.currentUser) await signInAnonymously(auth);
+  const call = httpsCallable<typeof input & { mode: 'import' }, { finds: ExtractedFind[] }>(getFunctions(app, 'northamerica-northeast2'), 'suggestExperiences');
+  const result = await call({ ...input, mode: 'import' });
+  return Array.isArray(result.data?.finds) ? result.data.finds : [];
 }

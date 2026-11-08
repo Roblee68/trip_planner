@@ -6,6 +6,7 @@ import { loadCandidates } from './catalog.js';
 import { parseScoutRequest } from './selection.js';
 import { scout } from './scout.js';
 import { scoutWeb } from './webScout.js';
+import { parseImportScanInput, scanImportedFind } from './importScan.js';
 import { dailyOpportunityScan, saveDailyScout } from './dailyService.js';
 
 initializeApp();
@@ -31,6 +32,17 @@ async function checkDailyLimit(uid: string) {
 export const suggestExperiences = onCall({ region: 'northamerica-northeast2', invoker: 'public', secrets: [openaiApiKey], timeoutSeconds: 90, memory: '512MiB', maxInstances: 1 }, async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in before using the scout.');
   if (!openaiApiKey.value()) throw new HttpsError('failed-precondition', 'The scout is not configured yet.');
+  if (request.data?.mode === 'import') {
+    let importInput;
+    try { importInput = parseImportScanInput(request.data); }
+    catch (error) { throw new HttpsError('invalid-argument', error instanceof Error ? error.message : 'Choose a screenshot or public link.'); }
+    await checkDailyLimit(request.auth.uid);
+    try { return { finds: await scanImportedFind(importInput) }; }
+    catch (error) {
+      console.error('Shared find scan failed', error);
+      throw new HttpsError('internal', 'The scout could not read this find. You can enter its details yourself.');
+    }
+  }
   let input;
   try { input = parseScoutRequest(request.data); }
   catch { throw new HttpsError('invalid-argument', 'Please check the request and location.'); }

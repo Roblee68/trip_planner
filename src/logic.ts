@@ -12,7 +12,8 @@ export const interestTopics = [
   'Woodwork', 'Shopping', 'Handmade', 'Forests', 'Gardens', 'Waterfalls', 'Beaches',
   'Stargazing', 'Birdwatching', 'Farmers markets', 'Food tours', 'Cooking', 'Street food',
   'Coffee and tea', 'Live music', 'Comedy', 'Cinema', 'Photography', 'Architecture',
-  'Books', 'Metalwork', 'Painting', 'Textiles', 'Jewellery making', 'Cycling',
+  'Books', 'Book clubs', 'Poetry', 'Fantasy and magic', 'Anime', 'Science fiction',
+  'Metalwork', 'Painting', 'Textiles', 'Jewellery making', 'Cycling',
   'Running', 'Paddling', 'Water sports', 'Winter sports', 'Climbing', 'Board games',
   'Trivia', 'Family activities', 'Volunteering', 'Community gatherings', 'Open to new ideas',
   'Guided tours', 'Walking tours', 'Wildlife tours', 'Boat tours', 'Behind-the-scenes tours',
@@ -21,7 +22,8 @@ export type InterestTopic = typeof interestTopics[number];
 export const topicGroups: { label: string; topics: InterestTopic[] }[] = [
   { label: 'Nature and discovery', topics: ['Hiking', 'Forests', 'Gardens', 'Waterfalls', 'Beaches', 'Epic views', 'Stargazing', 'Birdwatching', 'Farms', 'Farm animals', 'Wild animals', 'Wildlife tours'] },
   { label: 'Food, markets and celebrations', topics: ['Fairs', 'Markets', 'Farmers markets', 'Antiques', 'Festivals', 'Holiday events', 'Eating', 'Food tours', 'Cooking', 'Street food', 'Coffee and tea'] },
-  { label: 'Shows, culture and stories', topics: ['Shows', 'Musicals', 'Theatre', 'Live music', 'Comedy', 'Cinema', 'Books', 'Villages', 'Culture', 'Museums', 'History', 'Archaeology', 'Paleontology', 'Architecture', 'Guided tours', 'Walking tours'] },
+  { label: 'Shows, culture and stories', topics: ['Shows', 'Musicals', 'Theatre', 'Live music', 'Comedy', 'Cinema', 'Books', 'Book clubs', 'Poetry', 'Villages', 'Culture', 'Museums', 'History', 'Archaeology', 'Paleontology', 'Architecture', 'Guided tours', 'Walking tours'] },
+  { label: 'Fantasy, fandom and stories', topics: ['Fantasy and magic', 'Anime', 'Science fiction'] },
   { label: 'Make, learn and browse', topics: ['Art', 'Dancing', 'Classes', 'Crafts', 'Pottery', 'Woodwork', 'Metalwork', 'Painting', 'Textiles', 'Jewellery making', 'Photography', 'Shopping', 'Handmade', 'Behind-the-scenes tours', 'Open to new ideas'] },
   { label: 'Sports and adventure', topics: ['Sports', 'Play sports', 'Active', 'Adrenaline', 'Cycling', 'Running', 'Paddling', 'Water sports', 'Boat tours', 'Winter sports', 'Climbing', 'Rare activities'] },
   { label: 'Together and community', topics: ['Board games', 'Trivia', 'Family activities', 'Volunteering', 'Community gatherings'] },
@@ -49,7 +51,12 @@ const topicTerms: Record<InterestTopic, string[]> = {
   'Coffee and tea': ['coffee', 'tea tasting', 'tea ceremony'],
   'Live music': ['live music', 'concert', 'gig'], Comedy: ['comedy', 'stand-up', 'improv'],
   Cinema: ['cinema', 'film', 'movie'], Photography: ['photography', 'photo walk'],
-  Architecture: ['architecture', 'architectural'], Books: ['book', 'literary', 'reading'],
+  Architecture: ['architecture', 'architectural'], Books: ['book', 'books', 'novel', 'literary', 'reading', 'author'],
+  'Book clubs': ['book club', 'book clubs', 'reading group', 'literary meetup'],
+  Poetry: ['poetry', 'poem', 'poet', 'spoken word'],
+  'Fantasy and magic': ['fantasy', 'magic', 'wizard', 'harry potter', 'lord of the rings', 'middle earth'],
+  Anime: ['anime', 'manga', 'cosplay'],
+  'Science fiction': ['science fiction', 'sci-fi', 'scifi', 'star wars'],
   Metalwork: ['metalwork', 'metalworking', 'blacksmith', 'forge'],
   Painting: ['painting', 'watercolour', 'watercolor'], Textiles: ['textile', 'weaving', 'sewing'],
   'Jewellery making': ['jewellery', 'jewelry', 'silversmith'], Cycling: ['cycling', 'bike ride'],
@@ -65,9 +72,30 @@ const topicTerms: Record<InterestTopic, string[]> = {
   'Boat tours': ['boat tour', 'boat cruise', 'sightseeing cruise', 'harbour cruise'],
   'Behind-the-scenes tours': ['behind the scenes', 'backstage tour', 'factory tour', 'studio tour'],
 };
-export function matchedTopics(item: Experience, topics: InterestTopic[]): InterestTopic[] {
+export const namedInterestSuggestions = ['Harry Potter', 'The Lord of the Rings', 'Star Wars'] as const;
+
+export function normalizeTopics(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const topics: string[] = [];
+  let customCount = 0;
+  for (const raw of value) {
+    if (typeof raw !== 'string') continue;
+    const topic = raw.trim().replace(/\s+/g, ' ');
+    if (topics.some(existing => existing.toLocaleLowerCase() === topic.toLocaleLowerCase())) continue;
+    const predefined = interestTopics.includes(topic as InterestTopic);
+    if (!predefined) {
+      if (customCount >= 12 || topic.length < 2 || topic.length > 40 || !/^[\p{L}\p{N}][\p{L}\p{N} .&'’:-]*$/u.test(topic)) continue;
+      customCount++;
+    }
+    topics.push(topic);
+    if (topics.length >= 80) break;
+  }
+  return topics;
+}
+
+export function matchedTopics(item: Experience, topics: string[]): string[] {
   const words = `${item.title} ${item.summary} ${item.tags.join(' ')}`.toLowerCase();
-  return topics.filter(topic => (topicTerms[topic] ?? []).some(term => new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(words)));
+  return topics.filter(topic => (topicTerms[topic as InterestTopic] ?? [topic, topic.replace(/^the /i, '')]).some(term => new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(words)));
 }
 export type Experience = {
   travel?: { modes: TravelMode[]; originPlace?: string; flightMinutes?: number; routeSourceUrl?: string; routeCheckedAt?: string };
@@ -96,7 +124,7 @@ export type Experience = {
 export type Feedback = Record<string, 'love' | 'pass'>;
 export type Preferences = {
   interests: Category[];
-  topics: InterestTopic[];
+  topics: string[];
   travelModes: TravelMode[];
   place: string;
   currency: string;

@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Linking } from 'react-native';
 import type { ReminderPlan } from './reminders.ts';
+import type { ImportedFind } from './importedFinds.ts';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
@@ -32,6 +33,28 @@ export function syncPhoneReminders(plans: ReminderPlan[]): Promise<void> {
       await Notifications.scheduleNotificationAsync({
         content: { title: plan.title, body: plan.body, data: { pbbReminderKey: plan.key, itemId: plan.itemId, sourceUrl: plan.sourceUrl } },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(plan.at) },
+      });
+    }
+  };
+  syncQueue = syncQueue.then(work, work);
+  return syncQueue;
+}
+
+export function syncImportedReminders(finds: ImportedFind[]): Promise<void> {
+  const work = async () => {
+    const existing = await Notifications.getAllScheduledNotificationsAsync();
+    const own = existing.filter(request => typeof request.content.data?.pbbImportedId === 'string');
+    const desired = new Map(finds.filter(find => find.reminderAt && Date.parse(find.reminderAt) > Date.now() + 60_000).map(find => [find.id, find]));
+    for (const request of own) {
+      const id = String(request.content.data?.pbbImportedId);
+      if (!desired.has(id) || request.content.data?.reminderAt !== desired.get(id)?.reminderAt) await Notifications.cancelScheduledNotificationAsync(request.identifier);
+    }
+    const current = new Set(own.filter(request => request.content.data?.reminderAt === desired.get(String(request.content.data?.pbbImportedId))?.reminderAt).map(request => String(request.content.data?.pbbImportedId)));
+    for (const find of desired.values()) {
+      if (current.has(find.id)) continue;
+      await Notifications.scheduleNotificationAsync({
+        content: { title: `A find you saved: ${find.title}`, body: 'Check the organizer source, date and availability before making plans.', data: { pbbImportedId: find.id, reminderAt: find.reminderAt, sourceUrl: find.sourceUrl } },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(find.reminderAt!) },
       });
     }
   };

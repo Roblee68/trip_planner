@@ -58,7 +58,7 @@ export function eligibleWebLeads(raw: unknown, urls: Set<string>, profile: Daily
 
 export async function discoverWebLeads(profile: DailyProfile, now = new Date()): Promise<WebLeadMatch[]> {
   const response = await new OpenAI().responses.create({
-    model: process.env.PBB_WEB_MODEL || 'gpt-6-astra',
+    model: process.env.PBB_WEB_MODEL || 'gpt-6.1-sol',
     tools: [{ type: 'web_search', search_context_size: 'medium' }], tool_choice: 'required',
     include: ['web_search_call.action.sources'], max_tool_calls: 3, max_output_tokens: 1600, store: false,
     text: { format: { type: 'json_schema', name: 'daily_opportunity_leads', strict: true, schema } },

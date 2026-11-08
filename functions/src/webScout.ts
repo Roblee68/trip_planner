@@ -77,7 +77,7 @@ export async function scoutWeb(request: ScoutRequest): Promise<ScoutResponse> {
   const todayInstructions = request.occasion === 'today' || request.occasion === 'route' && request.routeTiming === 'today' ? ' This is a Today search: only suggest activities that the source supports for the supplied local date. Never suggest an undated listing, a past event, or a future event. State uncertainty plainly.' : '';
   const surpriseInstructions = request.occasion === 'surprise' ? ' This is Serendipity. Ignore saved likes and normal interest categories. Search broadly for something unusually fun, fascinating or unexpected within the supplied local radius and travel mode. Vary the types of activities. Never claim measured distance without a map source.' : ' Loved examples are a soft signal for what the person enjoys, but explicit interests, budget, distance, date and source evidence take priority.';
   const response = await client.responses.create({
-    model: process.env.PBB_WEB_MODEL || 'gpt-6-astra',
+    model: process.env.PBB_WEB_MODEL || 'gpt-6.1-sol',
     tools: [{ type: 'web_search', search_context_size: 'medium' }],
     tool_choice: 'required',
     include: ['web_search_call.action.sources'],

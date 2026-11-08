@@ -4,14 +4,21 @@
     "slug": "pb-and-b",
     "scheme": "pbandb",
     "version": "0.1.0",
+    "icon": "./assets/detours-app-icon-teal.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
+      "icon": "./assets/detours-app-icon-teal.png",
       "supportsTablet": true,
       "bundleIdentifier": "com.roblee.pbandb",
       "deploymentTarget": "16.4"
     },
     "android": {
+      "icon": "./assets/detours-app-icon-teal.png",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/detours-android-adaptive.png",
+        "backgroundColor": "#18B8B0"
+      },
       "package": "com.roblee.pbandb"
     },
     "web": {
@@ -28,8 +35,38 @@
       ],
       "./plugins/withPodMinimum",
       "expo-status-bar",
-      ["expo-location", { "locationWhenInUsePermission": "Allow PB&B to find your nearby city and suggest experiences when you ask." }],
-      "./plugins/withLocalNotificationsOnly"
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow PB&B to find your nearby city and suggest experiences when you ask."
+        }
+      ],
+      "./plugins/withLocalNotificationsOnly",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Detours & Escapades to choose a photo or screenshot you ask it to save."
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "writeOnlyAccess": true,
+          "writeOnlyCalendarPermission": "Allow Detours & Escapades to add a find to your calendar when you choose."
+        }
+      ],
+      [
+        "expo-sharing",
+        {
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": [
+              "text/plain",
+              "image/*"
+            ]
+          }
+        }
+      ]
     ]
   }
 }
