@@ -37,7 +37,7 @@ export const suggestExperiences = onCall({ region: 'northamerica-northeast2', in
     try { importInput = parseImportScanInput(request.data); }
     catch (error) { throw new HttpsError('invalid-argument', error instanceof Error ? error.message : 'Choose a screenshot or public link.'); }
     await checkDailyLimit(request.auth.uid);
-    try { return { finds: await scanImportedFind(importInput) }; }
+    try { return await scanImportedFind(importInput); }
     catch (error) {
       console.error('Shared find scan failed', error);
       throw new HttpsError('internal', 'The scout could not read this find. You can enter its details yourself.');

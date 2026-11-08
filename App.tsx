@@ -425,19 +425,21 @@ export default function App() {
     if (kind === 'image' && !importImageUri) { setImportMessage('Choose or share a photo or screenshot first.'); return; }
     setImportBusy(true);
     setImportCandidates([]);
-    setImportMessage('Your scout is reading this find…');
+    setImportMessage(kind === 'image' ? 'Reading the image, then checking the public web…' : 'Checking the public link…');
     try {
-      let finds: ExtractedFind[];
+      let scan;
       if (kind === 'image') {
         if (importImageMime !== 'image/jpeg' && importImageMime !== 'image/png') throw new Error('Choose a PNG or JPEG image.');
         const imageBase64 = await FileSystem.readAsStringAsync(importImageUri!, { encoding: FileSystem.EncodingType.Base64 });
         if (imageBase64.length > 4_000_000) throw new Error('This image is too large. Crop it and try again.');
-        finds = await scanSharedFind({ imageBase64, imageMime: importImageMime, place: preferences.place });
-      } else finds = await scanSharedFind({ sourceUrl: sourceUrl!, place: preferences.place });
+        scan = await scanSharedFind({ imageBase64, imageMime: importImageMime, sourceUrl: sourceUrl ?? undefined, place: preferences.place });
+      } else scan = await scanSharedFind({ sourceUrl: sourceUrl!, place: preferences.place });
+      const finds = scan.finds;
       setImportCandidates(finds);
       if (finds.length === 1) applyImportedCandidate(finds[0]);
       const sourced = finds.filter(find => !!find.sourceUrl).length;
-      setImportMessage(finds.length ? `${finds.length} possible ${finds.length === 1 ? 'event' : 'events'} found.${sourced ? ` Public sources found for ${sourced}.` : ''} Choose one and confirm its details.` : 'This post could not be read reliably. You can still enter and save its details below.');
+      const lookupMessage = scan.webLookup === 'matched' ? ` Public sources found for ${sourced}.` : scan.webLookup === 'no-match' ? ' Public web search found no reliable matching page.' : scan.webLookup === 'failed' ? ' Public web lookup could not finish; these details are unconfirmed.' : '';
+      setImportMessage(finds.length ? `${finds.length} possible ${finds.length === 1 ? 'event' : 'events'} found.${lookupMessage} Choose one and confirm its details.` : 'This post could not be read reliably. You can still enter and save its details below.');
     } catch (error) { setImportMessage(error instanceof Error ? error.message : 'The scout could not read this find. Enter its details below.'); }
     finally { setImportBusy(false); }
   };
@@ -788,7 +790,7 @@ export default function App() {
           <Text style={styles.agentTitle}>Keep something you spotted.</Text>
           <Text style={styles.importHelp}>Share a post or image from Instagram, Facebook or another app, or choose a screenshot here. Your scout can read visible details and public links. You choose what to save.</Text>
           <Action label="Choose photo or screenshot" onPress={() => { void pickImportedScreenshot(); }} secondary />
-          {importImageUri ? <><Image source={{ uri: importImageUri }} style={styles.importPreview} resizeMode="cover" /><Action label={importBusy ? 'Reading image…' : 'Read image'} onPress={() => { void readImportedFind('image'); }} small /></> : null}
+          {importImageUri ? <><Image source={{ uri: importImageUri }} style={styles.importPreview} resizeMode="cover" /><Action label={importBusy ? 'Scanning and searching…' : 'Scan photo and search web'} onPress={() => { void readImportedFind('image'); }} small /></> : null}
           <Text style={styles.label}>Post or event link (optional)</Text>
           <TextInput value={importLink} onChangeText={setImportLink} placeholder="Paste a social post or organizer link" placeholderTextColor="#6C8285" autoCapitalize="none" keyboardType="url" style={styles.importInput} />
           <Text style={styles.importHelp}>Private posts may not be readable from a link. Share a screenshot if the scout cannot access it.</Text>

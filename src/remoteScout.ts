@@ -60,12 +60,13 @@ export async function askRemoteScout(prompt: string, preferences: Preferences, r
   return response.data as ScoutResponse;
 }
 
-export async function scanSharedFind(input: { imageBase64?: string; imageMime?: 'image/jpeg' | 'image/png'; sourceUrl?: string; place: string }): Promise<ExtractedFind[]> {
+export type SharedFindScan = { finds: ExtractedFind[]; webLookup: 'matched' | 'no-match' | 'failed' | 'no-clues' };
+export async function scanSharedFind(input: { imageBase64?: string; imageMime?: 'image/jpeg' | 'image/png'; sourceUrl?: string; place: string }): Promise<SharedFindScan> {
   if (!remoteScoutConfigured) throw new Error('The live scout is not connected on this device. You can enter the details yourself.');
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(app);
   if (!auth.currentUser) await signInAnonymously(auth);
-  const call = httpsCallable<typeof input & { mode: 'import' }, { finds: ExtractedFind[] }>(getFunctions(app, 'northamerica-northeast2'), 'suggestExperiences');
+  const call = httpsCallable<typeof input & { mode: 'import' }, SharedFindScan>(getFunctions(app, 'northamerica-northeast2'), 'suggestExperiences');
   const result = await call({ ...input, mode: 'import' });
-  return Array.isArray(result.data?.finds) ? result.data.finds : [];
+  return { finds: Array.isArray(result.data?.finds) ? result.data.finds : [], webLookup: result.data?.webLookup ?? 'failed' };
 }
