@@ -6,6 +6,7 @@ export type ExtractedFind = {
   venue: string;
   place: string;
   sourceUrl?: string;
+  sourceTitle?: string;
 };
 
 export type ImportedFind = Omit<ExtractedFind, 'sourceUrl'> & {
@@ -23,6 +24,21 @@ export function findMentionsArea(find: ExtractedFind, area: string): boolean {
   const visiblePlace = words(find.place);
   const haystack = visiblePlace || words(`${find.title} ${find.venue}`);
   return ` ${haystack} `.includes(` ${city} `);
+}
+
+export function orderFindsForArea(finds: ExtractedFind[], area: string): ExtractedFind[] {
+  return finds.map((find, index) => ({ find, index, areaMatch: findMentionsArea(find, area) }))
+    .sort((a, b) => Number(b.areaMatch) - Number(a.areaMatch) || a.index - b.index)
+    .map(row => row.find);
+}
+
+export function mergeSelectedFinds(current: ExtractedFind[], indices: number[], lookedUp: ExtractedFind[]): ExtractedFind[] {
+  return current.map((find, index) => {
+    const selectedIndex = indices.indexOf(index);
+    const result = selectedIndex >= 0 ? lookedUp[selectedIndex] : undefined;
+    if (!result) return find;
+    return { ...find, ...result, title: find.title, sourceTitle: result.sourceUrl && result.title !== find.title ? result.title : find.sourceTitle };
+  });
 }
 
 export function safeSourceUrl(value: string): string | null {

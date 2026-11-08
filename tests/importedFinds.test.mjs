@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findMentionsArea, parseLocalDateTime, reminderSuggestion, safeSourceUrl } from '../src/importedFinds.ts';
+import { findMentionsArea, mergeSelectedFinds, orderFindsForArea, parseLocalDateTime, reminderSuggestion, safeSourceUrl } from '../src/importedFinds.ts';
 
 test('calendar and reminder dates reject invalid or nonexistent local times', () => {
   assert.equal(parseLocalDateTime('2026-02-30', '09:00'), null);
@@ -25,4 +25,17 @@ test('area hint uses the listed place before headline text', () => {
   assert.equal(findMentionsArea(find, 'Toronto, Canada'), false);
   assert.equal(findMentionsArea({ ...find, place: 'Toronto, Ontario' }, 'Toronto, Canada'), true);
   assert.equal(findMentionsArea({ ...find, place: '' }, 'Toronto, Canada'), true);
+});
+
+test('selected lookup enriches only its original row without moving it', () => {
+  const first = { title: 'A Christmas market', venue: '', place: 'Toronto', dateText: 'Nov 20', eventDate: '', eventTime: '' };
+  const second = { title: 'Winter craft show', venue: '', place: 'Hamilton', dateText: 'Nov 21', eventDate: '', eventTime: '' };
+  const ordered = orderFindsForArea([second, first], 'Toronto, Canada');
+  assert.deepEqual(ordered.map(find => find.title), ['A Christmas market', 'Winter craft show']);
+
+  const result = mergeSelectedFinds(ordered, [1], [{ ...second, title: 'Official Winter Makers Fair', sourceUrl: 'https://example.org/fair', place: 'Toronto' }]);
+  assert.deepEqual(result.map(find => find.title), ['A Christmas market', 'Winter craft show']);
+  assert.equal(result[1].sourceTitle, 'Official Winter Makers Fair');
+  assert.equal(result[1].sourceUrl, 'https://example.org/fair');
+  assert.equal(result[0], ordered[0]);
 });

@@ -18,7 +18,7 @@ import { listenForSourceTaps, phoneAlertsAllowed, requestPhoneAlerts, sendSample
 import { dailyScoutConfigured, getDailyPushToken, saveDailyScoutSubscription } from './src/dailyScout';
 import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/agent';
 import { askRemoteScout, getWeeklyFeaturedAdventures, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse } from './src/remoteScout';
-import { findMentionsArea, localInputParts, parseLocalDate, parseLocalDateTime, reminderSuggestion, safeSourceUrl, type ExtractedFind, type ImportedFind } from './src/importedFinds';
+import { findMentionsArea, localInputParts, mergeSelectedFinds, orderFindsForArea, parseLocalDate, parseLocalDateTime, reminderSuggestion, safeSourceUrl, type ExtractedFind, type ImportedFind } from './src/importedFinds';
 import { addImportedFindToCalendar, keepImportedScreenshot, prepareImageForScan, removeImportedScreenshot } from './src/importActions';
 
 type Tab = 'Discover' | 'Now' | 'Along the Way' | 'Saved' | 'Settings';
@@ -181,7 +181,9 @@ export default function App() {
   const [importImageUri, setImportImageUri] = useState<string | null>(null);
   const [importImageMime, setImportImageMime] = useState<string>('image/png');
   const [importCandidates, setImportCandidates] = useState<ExtractedFind[]>([]);
-  const [importBusy, setImportBusy] = useState(false);
+  const [importPhase, setImportPhase] = useState<'reading' | 'lookup' | 'saving' | null>(null);
+  const [importLookupIndices, setImportLookupIndices] = useState<number[]>([]);
+  const importBusy = importPhase !== null;
   const [importMessage, setImportMessage] = useState('');
   const [editingImportId, setEditingImportId] = useState<string | null>(null);
   const [importTitle, setImportTitle] = useState('');
@@ -461,7 +463,7 @@ export default function App() {
     }
   };
   const applyImportedCandidate = (find: ExtractedFind) => {
-    setImportTitle(find.title);
+    setImportTitle(find.sourceTitle ?? find.title);
     setImportDateText(find.dateText);
     setImportEventDate(find.eventDate);
     setImportEventTime(find.eventTime);
@@ -496,7 +498,7 @@ export default function App() {
     const sourceUrl = safeSourceUrl(importLink);
     if (kind === 'link' && !sourceUrl) { setImportMessage('Paste a public HTTPS link first.'); return; }
     if (kind === 'image' && !importImageUri) { setImportMessage('Choose or share a photo or screenshot first.'); return; }
-    setImportBusy(true);
+    setImportPhase('reading');
     setImportCandidates([]);
     setImportMessage(kind === 'image' ? 'Reading the listings in this image…' : 'Checking the public link…');
     try {
@@ -505,7 +507,7 @@ export default function App() {
         const image = await prepareImageForScan(importImageUri!);
         scan = await scanSharedFind({ ...image, sourceUrl: sourceUrl ?? undefined, place: preferences.place, lookupMode: 'extract' });
       } else scan = await scanSharedFind({ sourceUrl: sourceUrl!, place: preferences.place });
-      const finds = scan.finds;
+      const finds = orderFindsForArea(scan.finds, preferences.place);
       setImportCandidates(finds);
       if (finds.length === 1) applyImportedCandidate(finds[0]);
       const sourced = finds.filter(find => !!find.sourceUrl).length;
@@ -513,24 +515,22 @@ export default function App() {
       const areaCount = finds.filter(find => findMentionsArea(find, preferences.place)).length;
       setImportMessage(finds.length ? kind === 'image' ? `${finds.length} possible listings found. ${areaCount ? `${areaCount} mention ${preferences.place.split(',')[0]}. ` : ''}Choose which ones to look up online.` : `${finds.length} possible ${finds.length === 1 ? 'event' : 'events'} found.${lookupMessage} Choose one and confirm its details.` : 'This post could not be read reliably. You can still enter and save its details below.');
     } catch (error) { setImportMessage(error instanceof Error ? error.message : 'The scout could not read this find. Enter its details below.'); }
-    finally { setImportBusy(false); }
+    finally { setImportPhase(null); }
   };
   const lookupImportedCandidates = async (indices: number[]) => {
     if (importBusy || !indices.length) return;
     const selected = indices.slice(0, 5).map(index => importCandidates[index]).filter((find): find is ExtractedFind => !!find);
     if (!selected.length) return;
-    setImportBusy(true);
+    setImportPhase('lookup');
+    setImportLookupIndices(indices);
     setImportMessage(`Checking ${selected.length} selected ${selected.length === 1 ? 'listing' : 'listings'} on the public web…`);
     try {
       const scan = await scanSharedFind({ lookupMode: 'selected', selectedFinds: selected, sourceUrl: safeSourceUrl(importLink) ?? undefined, place: preferences.place });
-      setImportCandidates(current => current.map((find, index) => {
-        const selectedIndex = indices.indexOf(index);
-        return selectedIndex >= 0 ? scan.finds[selectedIndex] ?? find : find;
-      }));
+      setImportCandidates(current => mergeSelectedFinds(current, indices, scan.finds));
       const matched = scan.finds.filter(find => !!find.sourceUrl).length;
       setImportMessage(matched ? `Found public sources for ${matched} of ${selected.length}. Review each listing and confirm availability before saving.` : 'No reliable public source matched these listings. You can try another listing or save the visible details without a verified link.');
     } catch (error) { setImportMessage(error instanceof Error ? error.message : 'Could not look up those listings. Try again or save the visible details.'); }
-    finally { setImportBusy(false); }
+    finally { setImportPhase(null); setImportLookupIndices([]); }
   };
   const editImportedFind = (find: ImportedFind) => {
     setEditingImportId(find.id);
@@ -566,7 +566,7 @@ export default function App() {
       if (!(await requestPhoneAlerts())) { setImportMessage('Allow notifications on this phone to set the reminder, or clear its date and save without one.'); return; }
       reminderAt = reminder.toISOString();
     }
-    setImportBusy(true);
+    setImportPhase('saving');
     try {
       const old = importedFinds.find(find => find.id === editingImportId);
       const id = editingImportId ?? `import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -577,7 +577,7 @@ export default function App() {
       setEditingImportId(null); setImportTitle(''); setImportDateText(''); setImportEventDate(''); setImportEventTime(''); setImportVenue(''); setImportPlace(''); setImportReminderDate(''); setImportReminderTime('');
       setImportMessage(`Saved ${title} to Saved.${reminderAt ? ' Your phone reminder is set.' : ''}`);
     } catch { setImportMessage('This find could not be saved on the phone. Please try again.'); }
-    finally { setImportBusy(false); }
+    finally { setImportPhase(null); }
   };
   const removeImportedFind = (find: ImportedFind) => {
     setImportedFinds(current => current.filter(item => item.id !== find.id));
@@ -874,21 +874,22 @@ export default function App() {
           <Text style={[styles.agentTitle, { color: ink }]}>Keep something you spotted.</Text>
           <Text style={styles.importHelp}>Share a post or image from Instagram, Facebook or another app, or choose a screenshot here. Your scout reads the listings first; you choose which ones it checks online.</Text>
           <Action label="Choose photo or screenshot" onPress={() => { void pickImportedScreenshot(); }} secondary />
-          {importImageUri ? <><Image source={{ uri: importImageUri }} style={styles.importPreview} resizeMode="cover" /><Action label={importBusy ? 'Reading listings…' : 'Read listings in image'} onPress={() => { void readImportedFind('image'); }} small /></> : null}
+          {importImageUri ? <><Image source={{ uri: importImageUri }} style={styles.importPreview} resizeMode="cover" /><Action label={importPhase === 'reading' ? 'Reading listings…' : 'Read listings in image'} onPress={() => { void readImportedFind('image'); }} small /></> : null}
           <Text style={styles.label}>Post or event link (optional)</Text>
           <TextInput value={importLink} onChangeText={setImportLink} placeholder="Paste a social post or organizer link" placeholderTextColor="#6C8285" autoCapitalize="none" keyboardType="url" style={styles.importInput} />
           <Text style={styles.importHelp}>Private posts may not be readable from a link. Share a screenshot if the scout cannot access it.</Text>
-          {!!importLink.trim() && <Action label={importBusy ? 'Reading link…' : 'Read public link'} onPress={() => { void readImportedFind('link'); }} secondary small />}
+          {!!importLink.trim() && <Action label={importPhase === 'reading' ? 'Reading link…' : 'Read public link'} onPress={() => { void readImportedFind('link'); }} secondary small />}
           {importMessage ? <Text style={styles.notice}>{importMessage}</Text> : null}
           {importCandidates.length > 0 && <View>
             <Text style={styles.subheading}>Possible finds in this post</Text>
             <Text style={styles.importHelp}>Listings that mention {preferences.place.split(',')[0]} appear first. This is a text clue, so check the actual distance and organizer details.</Text>
-            {importCandidates.some(candidate => findMentionsArea(candidate, preferences.place) && !candidate.sourceUrl) && <Action label={importBusy ? 'Looking up nearby clues…' : `Look up listings mentioning ${preferences.place.split(',')[0]}`} onPress={() => { void lookupImportedCandidates(importCandidates.map((candidate, index) => findMentionsArea(candidate, preferences.place) && !candidate.sourceUrl ? index : -1).filter(index => index >= 0).slice(0, 5)); }} secondary small />}
-            {importCandidates.map((candidate, index) => ({ candidate, index, areaMatch: findMentionsArea(candidate, preferences.place) })).sort((a, b) => Number(b.areaMatch) - Number(a.areaMatch)).map(({ candidate, index, areaMatch }) => <View key={`${candidate.title}-${index}`} style={styles.importCandidate}>
+            {importCandidates.some(candidate => findMentionsArea(candidate, preferences.place) && !candidate.sourceUrl) && <Action label={importPhase === 'lookup' && importLookupIndices.length > 1 ? 'Looking up nearby clues…' : `Look up listings mentioning ${preferences.place.split(',')[0]}`} onPress={() => { void lookupImportedCandidates(importCandidates.map((candidate, index) => findMentionsArea(candidate, preferences.place) && !candidate.sourceUrl ? index : -1).filter(index => index >= 0).slice(0, 5)); }} secondary small />}
+            {importCandidates.map((candidate, index) => <View key={`import-candidate-${index}`} style={styles.importCandidate}>
               <Text style={styles.importCandidateTitle}>{candidate.title}</Text>
+              {candidate.sourceTitle && <Text style={styles.helper}>Public listing: {candidate.sourceTitle}</Text>}
               <Text style={styles.helper}>{candidate.dateText || 'Date unclear'}{candidate.venue ? ` · ${candidate.venue}` : ''}{candidate.place ? ` · ${candidate.place}` : ''}</Text>
-              <Text style={styles.helper}>{candidate.sourceUrl ? 'Public source found' : areaMatch ? `Mentions ${preferences.place.split(',')[0]} · distance unconfirmed` : 'Location needs checking'}</Text>
-              <View style={styles.cardActions}><Action label="Use this find" onPress={() => applyImportedCandidate(candidate)} small />{!candidate.sourceUrl && <Action label={importBusy ? 'Looking up…' : 'Look up this one'} onPress={() => { void lookupImportedCandidates([index]); }} secondary small />}</View>
+              <Text style={styles.helper}>{candidate.sourceUrl ? 'Public source found' : findMentionsArea(candidate, preferences.place) ? `Mentions ${preferences.place.split(',')[0]} · distance unconfirmed` : 'Location needs checking'}</Text>
+              <View style={styles.cardActions}><Action label="Use this find" onPress={() => { if (!importBusy) applyImportedCandidate(candidate); }} small />{candidate.sourceUrl ? <Action label="Open source ↗" onPress={() => { const url = safeSourceUrl(candidate.sourceUrl ?? ''); if (url) void Linking.openURL(url); }} secondary small /> : <Action label={importPhase === 'lookup' && importLookupIndices.includes(index) ? 'Looking up this one…' : 'Look up this one'} onPress={() => { void lookupImportedCandidates([index]); }} secondary small />}</View>
             </View>)}
           </View>}
           <Text style={styles.subheading}>{editingImportId ? 'Edit this find' : 'Review and save one find'}</Text>
@@ -902,7 +903,7 @@ export default function App() {
           <View style={styles.promptRow}>{[{ label: '1 week before', days: 7 }, { label: '3 days before', days: 3 }, { label: '1 day before', days: 1 }, { label: 'Day of', days: 0 }].map(option => <Pressable key={option.label} onPress={() => { const date = reminderSuggestion(importEventDate, importEventTime, option.days); if (!date) { setImportMessage('Confirm the event date first to choose a reminder.'); return; } const parts = localInputParts(date); setImportReminderDate(parts.date); setImportReminderTime(parts.time); }} style={styles.promptChip}><Text style={styles.promptText}>{option.label}</Text></Pressable>)}</View>
           <View style={styles.importDateRow}><TextInput value={importReminderDate} onChangeText={setImportReminderDate} placeholder="Reminder YYYY-MM-DD" placeholderTextColor="#6C8285" style={[styles.importInput, styles.importDateInput]} /><TextInput value={importReminderTime} onChangeText={setImportReminderTime} placeholder="HH:MM" placeholderTextColor="#6C8285" style={[styles.importInput, styles.importTimeInput]} /></View>
           <Text style={styles.importHelp}>A reminder uses this phone's local time and can be changed later. Calendar opens a review form after you save a confirmed date.</Text>
-          <Action label={importBusy ? 'Saving…' : editingImportId ? 'Update saved find' : 'Save find'} onPress={() => { if (!importBusy) void saveImportedFind(); }} />
+          <Action label={importPhase === 'saving' ? 'Saving…' : editingImportId ? 'Update saved find' : 'Save find'} onPress={() => { if (!importBusy) void saveImportedFind(); }} />
         </View>}
         {(savedWebIdeas.length > 0 || savedVisible.length > 0) && <View style={styles.agentPanel}><Text style={styles.agentKicker}>✦ KEEP EXPLORING</Text><Text style={styles.agentTitle}>More like this?</Text><Text style={styles.agentLead}>Choose a saved idea and your scout will look for current alternatives near {preferences.place}.</Text><View style={styles.promptRow}>{[...savedWebIdeas.map(idea => ({ id: idea.id, title: idea.title })), ...savedVisible.map(item => ({ id: item.id, title: item.title }))].slice(0, 8).map(item => <Pressable key={item.id} onPress={() => { void runSavedScout(item.title); }} style={styles.promptChip}><Text style={styles.promptText} numberOfLines={2}>{item.title}</Text></Pressable>)}</View></View>}
         {savedScoutLoading && <Text style={styles.notice}>Looking for more like {savedScoutSeed}…</Text>}
