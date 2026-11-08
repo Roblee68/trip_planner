@@ -5,7 +5,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useIncomingShare } from 'expo-sharing';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, ImageBackground, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, Pressable, View } from 'react-native';
+import { Alert, AppState, Image, ImageBackground, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { categories, daysUntil, defaultPreferences, interestTopics, matchedTopics, money, namedInterestSuggestions, normalizeTopics, opportunityAlerts, rankExperiences, topicGroups, travelModeLabels, travelModes, type Category, type Experience, type Feedback, type Preferences, type InterestTopic, type TravelMode } from './src/logic';
 import { currencyForCountry, currencyName, currencyOptions } from './src/currencies';
@@ -18,7 +18,7 @@ import { listenForSourceTaps, phoneAlertsAllowed, requestPhoneAlerts, sendSample
 import { dailyScoutConfigured, getDailyPushToken, saveDailyScoutSubscription } from './src/dailyScout';
 import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/agent';
 import { askRemoteScout, getWeeklyFeaturedAdventures, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse } from './src/remoteScout';
-import { findMentionsArea, localInputParts, mergeSelectedFinds, orderFindsForArea, parseLocalDate, parseLocalDateTime, reminderSuggestion, safeSourceUrl, type ExtractedFind, type ImportedFind } from './src/importedFinds';
+import { findMentionsArea, localInputParts, mergeSelectedFinds, nextLocalMorning, orderFindsForArea, parseLocalDate, parseLocalDateTime, reminderSuggestion, safeSourceUrl, type ExtractedFind, type ImportedFind } from './src/importedFinds';
 import { addImportedFindToCalendar, keepImportedScreenshot, prepareImageForScan, removeImportedScreenshot } from './src/importActions';
 
 type Tab = 'Discover' | 'Now' | 'Along the Way' | 'Saved' | 'Settings';
@@ -194,6 +194,7 @@ export default function App() {
   const [importPlace, setImportPlace] = useState('');
   const [importReminderDate, setImportReminderDate] = useState('');
   const [importReminderTime, setImportReminderTime] = useState('');
+  const [importReminderFeedback, setImportReminderFeedback] = useState('');
   const [likedExamples, setLikedExamples] = useState<LikedExample[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [lastPassed, setLastPassed] = useState<{ item: Experience; wasSaved: boolean } | null>(null);
@@ -256,6 +257,7 @@ export default function App() {
   const [savedScoutLoading, setSavedScoutLoading] = useState(false);
   const [savedScoutSeed, setSavedScoutSeed] = useState('');
   const [phoneAlertMessage, setPhoneAlertMessage] = useState('');
+  const [phoneNotificationsAllowed, setPhoneNotificationsAllowed] = useState<boolean | null>(null);
   const [dailyScoutMessage, setDailyScoutMessage] = useState('');
   const [locationMessage, setLocationMessage] = useState('');
   const [locationBusy, setLocationBusy] = useState(false);
@@ -314,6 +316,13 @@ export default function App() {
     return () => { cancelled = true; if (retryTimer) clearTimeout(retryTimer); };
   }, [hydrated]);
   useEffect(() => { if (hydrated) syncImportedReminders(importedFinds).catch(() => setImportMessage('A saved reminder could not be scheduled on this phone.')); }, [hydrated, importedFinds]);
+  useEffect(() => {
+    if (tab !== 'Settings') return;
+    const refresh = () => { void phoneAlertsAllowed().then(setPhoneNotificationsAllowed).catch(() => setPhoneNotificationsAllowed(false)); };
+    refresh();
+    const subscription = AppState.addEventListener('change', state => { if (state === 'active') refresh(); });
+    return () => subscription.remove();
+  }, [tab]);
   useEffect(() => { setNowBudgetText(String(preferences.maxBudget)); }, [preferences.maxBudget]);
   useEffect(() => { const subscription = listenForSourceTaps(); return () => subscription.remove(); }, []);
   useEffect(() => {
@@ -412,12 +421,20 @@ export default function App() {
       : `A FRESH IDEA WITHIN YOUR ${preferences.maxBudget} ${preferences.currency} BUDGET`;
   };
   const togglePhoneAlerts = async () => {
-    if (preferences.phoneAlertsEnabled) { setPreferences(current => ({ ...current, phoneAlertsEnabled: false })); setPhoneAlertMessage('Phone reminders are off.'); return; }
+    if (preferences.phoneAlertsEnabled) { setPreferences(current => ({ ...current, phoneAlertsEnabled: false })); setPhoneAlertMessage('Automatic match alerts are off. Reminders you set for saved finds stay on.'); return; }
     try {
       const allowed = await requestPhoneAlerts();
-      if (allowed) { setPreferences(current => ({ ...current, phoneAlertsEnabled: true })); setPhoneAlertMessage('Phone reminders are on for verified matches.'); }
-      else setPhoneAlertMessage('Allow notifications in your phone settings to turn on reminders.');
+      setPhoneNotificationsAllowed(allowed);
+      if (allowed) { setPreferences(current => ({ ...current, phoneAlertsEnabled: true })); setPhoneAlertMessage('Automatic phone alerts are on for verified matches.'); }
+      else setPhoneAlertMessage('Allow notifications in your phone settings to turn on automatic alerts.');
     } catch { setPhoneAlertMessage('Phone notifications could not be enabled.'); }
+  };
+  const enablePhoneNotifications = async () => {
+    try {
+      const allowed = await requestPhoneAlerts();
+      setPhoneNotificationsAllowed(allowed);
+      setPhoneAlertMessage(allowed ? 'Phone notifications are allowed. You can now set reminders for finds you save.' : 'Notifications are blocked. Open your phone settings and allow them for PB&B.');
+    } catch { setPhoneAlertMessage('Phone notification permission could not be checked.'); }
   };
   const toggleDailyScout = async () => {
     if (!dailyScoutConfigured) { setDailyScoutMessage('Daily web scout alerts are not connected yet. The online service and phone push setup are still being prepared.'); return; }
@@ -472,6 +489,7 @@ export default function App() {
     if (find.sourceUrl) setImportLink(find.sourceUrl);
     setImportReminderDate('');
     setImportReminderTime('');
+    setImportReminderFeedback('');
     setEditingImportId(null);
     setImportMessage('Review the date and year before saving or setting a reminder.');
   };
@@ -545,10 +563,20 @@ export default function App() {
     setImportImageMime(find.imageUri?.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
     if (find.reminderAt) { const parts = localInputParts(new Date(find.reminderAt)); setImportReminderDate(parts.date); setImportReminderTime(parts.time); }
     else { setImportReminderDate(''); setImportReminderTime(''); }
+    setImportReminderFeedback(find.reminderAt ? `Reminder scheduled for ${new Date(find.reminderAt).toLocaleString()}.` : 'Choose a reminder time below, then update this find.');
     setImportOpen(true);
     setTab('Saved');
     setImportMessage('Edit and save this find. Dates from posts still need confirmation.');
     scrollRef.current?.scrollTo({ y: 350, animated: true });
+  };
+  const chooseImportedReminder = (daysBefore?: number) => {
+    const reminder = daysBefore === undefined ? nextLocalMorning() : reminderSuggestion(importEventDate, importEventTime, daysBefore);
+    if (!reminder) { setImportReminderFeedback('This listing has no confirmed single event date. Choose Tomorrow morning or enter a future reminder date and time.'); return; }
+    if (reminder.getTime() <= Date.now() + 60_000) { setImportReminderFeedback('That reminder time has already passed. Choose a later option or enter your own time.'); return; }
+    const parts = localInputParts(reminder);
+    setImportReminderDate(parts.date);
+    setImportReminderTime(parts.time);
+    setImportReminderFeedback(`Ready for ${reminder.toLocaleString()}. Tap Save find and set reminder below.`);
   };
   const saveImportedFind = async () => {
     const title = importTitle.trim();
@@ -560,23 +588,35 @@ export default function App() {
     let reminderAt: string | null = null;
     if (importReminderDate.trim() || importReminderTime.trim()) {
       const reminder = parseLocalDateTime(importReminderDate, importReminderTime);
-      if (!reminder || reminder.getTime() <= Date.now() + 60_000) { setImportMessage('Choose a future reminder date and time.'); return; }
+      if (!reminder || reminder.getTime() <= Date.now() + 60_000) { setImportReminderFeedback('Choose a future reminder date and time.'); return; }
       const event = importEventDate ? parseLocalDateTime(importEventDate, importEventTime || '23:59') : null;
-      if (event && reminder.getTime() >= event.getTime()) { setImportMessage('Set the reminder before the event.'); return; }
-      if (!(await requestPhoneAlerts())) { setImportMessage('Allow notifications on this phone to set the reminder, or clear its date and save without one.'); return; }
+      if (event && reminder.getTime() >= event.getTime()) { setImportReminderFeedback('Set the reminder before the event.'); return; }
+      let allowed = false;
+      try { allowed = await requestPhoneAlerts(); }
+      catch { setImportReminderFeedback('Phone notification permission could not be checked. Please try again.'); return; }
+      if (!allowed) { setPhoneNotificationsAllowed(false); setImportReminderFeedback('Notifications are off. Allow them in your phone settings, then save this find again.'); return; }
+      setPhoneNotificationsAllowed(true);
       reminderAt = reminder.toISOString();
     }
     setImportPhase('saving');
+    let copiedImageUri: string | null = null;
     try {
       const old = importedFinds.find(find => find.id === editingImportId);
       const id = editingImportId ?? `import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const imageUri = importImageUri && !importImageUri.includes('/imported-finds/') ? await keepImportedScreenshot(importImageUri, id, importImageMime) : importImageUri;
+      if (imageUri && imageUri !== importImageUri) copiedImageUri = imageUri;
       const next: ImportedFind = { id, title, dateText: importDateText.trim(), eventDate: importEventDate.trim(), eventTime: importEventTime.trim(), venue: importVenue.trim(), place: importPlace.trim() || preferences.place, sourceUrl, imageUri, savedAt: old?.savedAt ?? new Date().toISOString(), reminderAt };
-      setImportedFinds(current => [next, ...current.filter(find => find.id !== id)].slice(0, 100));
+      const nextFinds = [next, ...importedFinds.filter(find => find.id !== id)].slice(0, 100);
+      if (reminderAt) await syncImportedReminders(nextFinds);
+      setImportedFinds(nextFinds);
       if (old?.imageUri && old.imageUri !== imageUri) void removeImportedScreenshot(old.imageUri);
       setEditingImportId(null); setImportTitle(''); setImportDateText(''); setImportEventDate(''); setImportEventTime(''); setImportVenue(''); setImportPlace(''); setImportReminderDate(''); setImportReminderTime('');
       setImportMessage(`Saved ${title} to Saved.${reminderAt ? ' Your phone reminder is set.' : ''}`);
-    } catch { setImportMessage('This find could not be saved on the phone. Please try again.'); }
+      setImportReminderFeedback(reminderAt ? `Saved. Your phone reminder is scheduled for ${new Date(reminderAt).toLocaleString()}.` : 'Find saved on this phone.');
+    } catch {
+      if (copiedImageUri) void removeImportedScreenshot(copiedImageUri);
+      setImportReminderFeedback(reminderAt ? 'The phone could not schedule this reminder. Your details are still here; try saving again.' : 'This find could not be saved on the phone. Please try again.');
+    }
     finally { setImportPhase(null); }
   };
   const removeImportedFind = (find: ImportedFind) => {
@@ -900,10 +940,12 @@ export default function App() {
           <Text style={styles.label}>Venue</Text><TextInput value={importVenue} onChangeText={setImportVenue} placeholder="Where is it?" placeholderTextColor="#6C8285" style={styles.importInput} />
           <Text style={styles.label}>City or area</Text><TextInput value={importPlace} onChangeText={setImportPlace} placeholder={preferences.place} placeholderTextColor="#6C8285" style={styles.importInput} />
           <Text style={styles.label}>Remind me (optional)</Text>
-          <View style={styles.promptRow}>{[{ label: '1 week before', days: 7 }, { label: '3 days before', days: 3 }, { label: '1 day before', days: 1 }, { label: 'Day of', days: 0 }].map(option => <Pressable key={option.label} onPress={() => { const date = reminderSuggestion(importEventDate, importEventTime, option.days); if (!date) { setImportMessage('Confirm the event date first to choose a reminder.'); return; } const parts = localInputParts(date); setImportReminderDate(parts.date); setImportReminderTime(parts.time); }} style={styles.promptChip}><Text style={styles.promptText}>{option.label}</Text></Pressable>)}</View>
-          <View style={styles.importDateRow}><TextInput value={importReminderDate} onChangeText={setImportReminderDate} placeholder="Reminder YYYY-MM-DD" placeholderTextColor="#6C8285" style={[styles.importInput, styles.importDateInput]} /><TextInput value={importReminderTime} onChangeText={setImportReminderTime} placeholder="HH:MM" placeholderTextColor="#6C8285" style={[styles.importInput, styles.importTimeInput]} /></View>
+          {!importEventDate && <Text style={styles.importHelp}>No single event date is confirmed yet. You can still set a reminder to check this listing.</Text>}
+          <View style={styles.promptRow}><Pressable onPress={() => chooseImportedReminder()} style={styles.promptChip}><Text style={styles.promptText}>Tomorrow morning</Text></Pressable>{[{ label: '1 week before', days: 7 }, { label: '3 days before', days: 3 }, { label: '1 day before', days: 1 }, { label: 'Day of', days: 0 }].map(option => <Pressable key={option.label} onPress={() => chooseImportedReminder(option.days)} style={styles.promptChip}><Text style={styles.promptText}>{option.label}</Text></Pressable>)}</View>
+          <View style={styles.importDateRow}><TextInput value={importReminderDate} onChangeText={value => { setImportReminderDate(value); setImportReminderFeedback('Tap Save find and set reminder after choosing a future date and time.'); }} placeholder="Reminder YYYY-MM-DD" placeholderTextColor="#6C8285" style={[styles.importInput, styles.importDateInput]} /><TextInput value={importReminderTime} onChangeText={value => { setImportReminderTime(value); setImportReminderFeedback('Tap Save find and set reminder after choosing a future date and time.'); }} placeholder="HH:MM" placeholderTextColor="#6C8285" style={[styles.importInput, styles.importTimeInput]} /></View>
+          {importReminderFeedback ? <Text style={styles.reminderFeedback}>{importReminderFeedback}</Text> : null}
           <Text style={styles.importHelp}>A reminder uses this phone's local time and can be changed later. Calendar opens a review form after you save a confirmed date.</Text>
-          <Action label={importPhase === 'saving' ? 'Saving…' : editingImportId ? 'Update saved find' : 'Save find'} onPress={() => { if (!importBusy) void saveImportedFind(); }} />
+          <Action label={importPhase === 'saving' ? 'Saving…' : importReminderDate || importReminderTime ? 'Save find and set reminder' : editingImportId ? 'Update saved find' : 'Save find'} onPress={() => { if (!importBusy) void saveImportedFind(); }} />
         </View>}
         {(savedWebIdeas.length > 0 || savedVisible.length > 0) && <View style={styles.agentPanel}><Text style={styles.agentKicker}>✦ KEEP EXPLORING</Text><Text style={styles.agentTitle}>More like this?</Text><Text style={styles.agentLead}>Choose a saved idea and your scout will look for current alternatives near {preferences.place}.</Text><View style={styles.promptRow}>{[...savedWebIdeas.map(idea => ({ id: idea.id, title: idea.title })), ...savedVisible.map(item => ({ id: item.id, title: item.title }))].slice(0, 8).map(item => <Pressable key={item.id} onPress={() => { void runSavedScout(item.title); }} style={styles.promptChip}><Text style={styles.promptText} numberOfLines={2}>{item.title}</Text></Pressable>)}</View></View>}
         {savedScoutLoading && <Text style={styles.notice}>Looking for more like {savedScoutSeed}…</Text>}
@@ -937,14 +979,19 @@ export default function App() {
         <View style={styles.settingsRow}><View><Text style={styles.label}>Maximum budget</Text><Text style={styles.helper}>Per experience, {preferences.currency}</Text></View><TextInput style={styles.numberInput} keyboardType="number-pad" value={String(preferences.maxBudget)} onChangeText={value => setNumber('maxBudget', value)} /></View>
         <Text style={styles.subheading}>Distance</Text><View style={styles.chipRow}><Pill label="Kilometres" active={preferences.distanceUnit === 'km'} onPress={() => setPreferences(current => ({ ...current, distanceUnit: 'km' }))} /><Pill label="Miles" active={preferences.distanceUnit === 'mi'} onPress={() => setPreferences(current => ({ ...current, distanceUnit: 'mi' }))} /></View>
         <View style={styles.settingsRow}><View><Text style={styles.label}>Travel radius</Text><Text style={styles.helper}>{preferences.distanceUnit === 'mi' ? 'Miles' : 'Kilometres'} from your chosen place</Text></View><TextInput style={styles.numberInput} keyboardType="number-pad" value={String(Math.round(fromKilometres(preferences.maxDistanceKm, preferences.distanceUnit)))} onChangeText={setRadius} /></View>
+        <Text style={styles.subheading}>Notifications</Text>
+        <Text style={styles.helper}>Phone notifications: {phoneNotificationsAllowed === null ? 'Checking…' : phoneNotificationsAllowed ? 'Allowed' : 'Off'}. Reminders for finds you save need permission on this phone.</Text>
+        {phoneNotificationsAllowed === false && <Action label="Enable phone notifications" onPress={() => { void enablePhoneNotifications(); }} secondary small />}
+        {phoneNotificationsAllowed === false && <Action label="Open phone notification settings" onPress={() => { void Linking.openSettings(); }} secondary small />}
+        {phoneNotificationsAllowed && <Action label="Try a sample notification" onPress={() => { sendSampleAlert().then(() => setPhoneAlertMessage('Sample notification scheduled in five seconds.')).catch(() => setPhoneAlertMessage('The sample notification could not be sent.')); }} secondary small />}
         <Setting label="Show timely in-app alerts" value={preferences.alertsEnabled} onPress={() => setPreferences(current => ({ ...current, alertsEnabled: !current.alertsEnabled }))} />
         <Setting label="Highlight free opportunities" value={preferences.freeAlerts} onPress={() => setPreferences(current => ({ ...current, freeAlerts: !current.freeAlerts }))} />
         <Setting label="Watch saved interests" value={preferences.savedAlerts} onPress={() => setPreferences(current => ({ ...current, savedAlerts: !current.savedAlerts }))} />
-        <Setting label="Phone reminders for verified matches" value={preferences.phoneAlertsEnabled} onPress={togglePhoneAlerts} />
-        <Text style={styles.helper}>When a source-checked match has a sign-up deadline or is coming up soon, your phone can remind you. Finding new ideas while the app is closed needs the daily web scout and push service.</Text>
+        <Setting label="Automatic alerts for verified matches" value={preferences.phoneAlertsEnabled} onPress={() => { void togglePhoneAlerts(); }} />
+        <Text style={styles.helper}>Alerts for source-checked matches with a nearby date or sign-up deadline. Reminders you choose for saved finds work separately.</Text>
         {phoneAlertMessage ? <Text style={styles.notice}>{phoneAlertMessage}</Text> : null}
-        {preferences.phoneAlertsEnabled && <Action label="Try a sample phone alert" onPress={() => { sendSampleAlert().then(() => setPhoneAlertMessage('Sample alert scheduled in five seconds.')).catch(() => setPhoneAlertMessage('The sample alert could not be sent.')); }} secondary />}
-        <Setting label="Daily scout for weekends and sign-up deadlines" value={preferences.dailyScoutEnabled} onPress={() => { void toggleDailyScout(); }} />
+        <Setting label="Daily scout" value={preferences.dailyScoutEnabled} onPress={() => { void toggleDailyScout(); }} />
+        <Text style={styles.helper}>Weekend ideas and sign-up deadlines</Text>
         <Text style={styles.helper}>{dailyScoutConfigured ? 'With your permission, the web scout checks each morning and sends at most two possible matches with source links.' : 'Daily web alerts are being built. This preview cannot send new finds while the app is closed yet.'}</Text>
         {dailyScoutMessage ? <Text style={styles.notice}>{dailyScoutMessage}</Text> : null}
         <Text style={styles.subheading}>Timely finds</Text>
@@ -958,7 +1005,7 @@ export default function App() {
 }
 
 function Setting({ label, value, onPress }: { label: string; value: boolean; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.setting}><Text style={styles.label}>{label}</Text><View style={[styles.toggle, value && styles.toggleOn]}><View style={[styles.toggleKnob, value && styles.toggleKnobOn]} /></View></Pressable>;
+  return <Pressable onPress={onPress} style={styles.setting} accessibilityRole="switch" accessibilityState={{ checked: value }}><Text style={[styles.label, styles.settingLabel]}>{label}</Text><View style={[styles.toggle, value && styles.toggleOn]}><View style={[styles.toggleKnob, value && styles.toggleKnobOn]} /></View></Pressable>;
 }
 
 const styles = StyleSheet.create({
@@ -972,11 +1019,11 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, subheading: { color: ink, fontWeight: '800', fontSize: 21, marginBottom: 14 }, resultCount: { color: muted, fontSize: 12 }, card: { borderRadius: 2, backgroundColor: '#FFFFFF', overflow: 'hidden', borderWidth: 2, borderColor: '#18B8B0', marginBottom: 18 }, cardArt: { height: 110, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }, artGlyph: { color: '#FFFFFF', opacity: 0.9, fontSize: 72, lineHeight: 80, fontWeight: '200' }, artLabel: { color: '#FFFFFF', fontSize: 12, fontWeight: '900', letterSpacing: 2 }, cardBody: { padding: 17 }, eyebrow: { color: sea, textTransform: 'uppercase', fontWeight: '800', fontSize: 10, letterSpacing: 0.9 }, cost: { color: ink, fontWeight: '800', fontSize: 12 }, cardTitle: { color: ink, fontWeight: '800', fontSize: 21, lineHeight: 26, marginTop: 8, marginBottom: 5 }, cardMeta: { color: muted, fontSize: 12, marginBottom: 10 }, summary: { color: '#45656B', fontSize: 14, lineHeight: 20 }, cardActions: { marginTop: 16, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 }, action: { backgroundColor: '#B9ED5C', borderRadius: 999, paddingHorizontal: 17, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }, actionSecondary: { backgroundColor: '#E9F9F5', borderWidth: 1, borderColor: '#C9E7E0' }, actionSmall: { paddingHorizontal: 12, paddingVertical: 10, marginBottom: 0 }, actionText: { color: '#103D46', fontWeight: '800', fontSize: 13 }, actionTextSecondary: { color: sea }, textAction: { paddingHorizontal: 6, paddingVertical: 10 }, textActionLabel: { color: sea, fontWeight: '700', fontSize: 12 },
   empty: { padding: 22, backgroundColor: '#FFFFFF', borderRadius: 18, marginBottom: 20 }, emptyTitle: { color: ink, fontWeight: '800', fontSize: 17, marginBottom: 6 }, footerNote: { color: '#61767A', fontSize: 11, textAlign: 'center', marginTop: 14 }, label: { color: ink, fontSize: 14, fontWeight: '700', marginBottom: 6 }, helper: { color: muted, fontSize: 11 }, notice: { backgroundColor: '#EAF6F4', color: '#103D46', borderRadius: 12, padding: 14, lineHeight: 19, fontSize: 12, marginBottom: 20 },
   back: { color: sea, fontWeight: '700', marginBottom: 18 }, detailArt: { borderRadius: 18, height: 190, alignItems: 'center', justifyContent: 'center', marginBottom: 22 }, detailGlyph: { color: '#FFFFFF', fontSize: 100, lineHeight: 110 }, detailCategory: { color: '#FFFFFF', fontWeight: '900', letterSpacing: 2 }, infoPanel: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, marginBottom: 20 }, infoText: { color: ink, fontSize: 14, marginBottom: 10 },
-  alertCard: { backgroundColor: '#FFF0EA', padding: 18, borderRadius: 16, marginBottom: 12 }, alertTag: { color: '#BB4A34', fontWeight: '800', textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.8 }, alertTitle: { color: ink, fontSize: 17, fontWeight: '800', marginVertical: 8 }, alertLink: { color: sea, fontWeight: '800', fontSize: 12 }, settingsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderColor: '#E3E7E3' }, numberInput: { width: 76, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C9DCDA', borderRadius: 10, textAlign: 'center', padding: 9, color: ink, fontWeight: '800' }, setting: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderColor: '#E3E7E3' }, toggle: { width: 44, height: 26, borderRadius: 13, backgroundColor: '#C9DCDA', padding: 3 }, toggleOn: { backgroundColor: '#18B8B0' }, toggleKnob: { width: 20, height: 20, backgroundColor: '#FFFFFF', borderRadius: 10 }, toggleKnobOn: { alignSelf: 'flex-end' },
+  alertCard: { backgroundColor: '#FFF0EA', padding: 18, borderRadius: 16, marginBottom: 12 }, alertTag: { color: '#BB4A34', fontWeight: '800', textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.8 }, alertTitle: { color: ink, fontSize: 17, fontWeight: '800', marginVertical: 8 }, alertLink: { color: sea, fontWeight: '800', fontSize: 12 }, settingsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderColor: '#E3E7E3' }, numberInput: { width: 76, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C9DCDA', borderRadius: 10, textAlign: 'center', padding: 9, color: ink, fontWeight: '800' }, setting: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderColor: '#E3E7E3' }, settingLabel: { flex: 1, flexShrink: 1, marginRight: 12, marginBottom: 0 }, toggle: { width: 44, height: 26, borderRadius: 13, backgroundColor: '#C9DCDA', padding: 3, flexShrink: 0 }, toggleOn: { backgroundColor: '#18B8B0' }, toggleKnob: { width: 20, height: 20, backgroundColor: '#FFFFFF', borderRadius: 10 }, toggleKnobOn: { alignSelf: 'flex-end' },
   sourceHeading: { color: ink, fontWeight: '900', fontSize: 10, letterSpacing: 1.3, marginTop: 18, marginBottom: 9 }, sourceLink: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C9E7E0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8 }, sourceLinkText: { color: sea, fontWeight: '800', fontSize: 13 },
   webIntro: { color: muted, fontSize: 14, lineHeight: 20, marginBottom: 14 }, webCard: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, padding: 18, marginBottom: 16 }, webKicker: { color: sea, fontSize: 10, fontWeight: '900', letterSpacing: 1.1, marginBottom: 9 }, webTitle: { color: ink, fontSize: 21, lineHeight: 26, fontWeight: '900', marginBottom: 8 }, webMeta: { color: ink, fontSize: 13, fontWeight: '800', marginBottom: 5 }, webVenue: { color: muted, fontSize: 12, marginBottom: 12 }, webReason: { color: sea, fontSize: 11, fontWeight: '800', marginBottom: 10 }, webSummary: { color: muted, fontSize: 13, lineHeight: 19 }, webSource: { color: sea, fontSize: 11, fontWeight: '700', marginTop: 14 }, webDisclaimer: { color: '#61767A', fontSize: 10, lineHeight: 15, marginTop: 8 },
   scoutStatus: { color: sea, fontSize: 11, fontWeight: '700', marginBottom: 12 }, deadlineText: { color: '#BB4A34', fontSize: 12, fontWeight: '800', marginBottom: 8 },
-  importToggle: { backgroundColor: '#E6F7F3', borderWidth: 2, borderColor: '#103D46', borderRadius: 2, paddingHorizontal: 17, paddingVertical: 15, marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }, importPanel: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, padding: 17, marginBottom: 22 }, importHelp: { color: muted, fontSize: 12, lineHeight: 18, marginBottom: 15 }, importInput: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C9DCDA', borderRadius: 2, paddingHorizontal: 13, paddingVertical: 11, color: ink, fontSize: 14, marginBottom: 13 }, importPreview: { width: '100%', height: 180, borderRadius: 2, marginBottom: 12, backgroundColor: '#E6F7F3' }, importCandidate: { borderWidth: 1, borderColor: '#C9DCDA', backgroundColor: '#F4FBF9', padding: 13, marginBottom: 9 }, importCandidateTitle: { color: ink, fontWeight: '800', fontSize: 14, marginBottom: 3 }, importDateRow: { flexDirection: 'row', gap: 8 }, importDateInput: { flex: 2 }, importTimeInput: { flex: 1 }, importedCard: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, padding: 17, marginBottom: 16 }, importedImage: { width: '100%', height: 145, marginBottom: 13, borderRadius: 2 }, importedReminder: { color: sea, fontSize: 12, fontWeight: '800', marginTop: 8 },
+  importToggle: { backgroundColor: '#E6F7F3', borderWidth: 2, borderColor: '#103D46', borderRadius: 2, paddingHorizontal: 17, paddingVertical: 15, marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }, importPanel: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, padding: 17, marginBottom: 22 }, importHelp: { color: muted, fontSize: 12, lineHeight: 18, marginBottom: 15 }, reminderFeedback: { color: sea, fontSize: 12, lineHeight: 18, fontWeight: '700', marginBottom: 12 }, importInput: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C9DCDA', borderRadius: 2, paddingHorizontal: 13, paddingVertical: 11, color: ink, fontSize: 14, marginBottom: 13 }, importPreview: { width: '100%', height: 180, borderRadius: 2, marginBottom: 12, backgroundColor: '#E6F7F3' }, importCandidate: { borderWidth: 1, borderColor: '#C9DCDA', backgroundColor: '#F4FBF9', padding: 13, marginBottom: 9 }, importCandidateTitle: { color: ink, fontWeight: '800', fontSize: 14, marginBottom: 3 }, importDateRow: { flexDirection: 'row', gap: 8 }, importDateInput: { flex: 2 }, importTimeInput: { flex: 1 }, importedCard: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, padding: 17, marginBottom: 16 }, importedImage: { width: '100%', height: 145, marginBottom: 13, borderRadius: 2 }, importedReminder: { color: sea, fontSize: 12, fontWeight: '800', marginTop: 8 },
   lookFurther: { backgroundColor: '#E6F7F3', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, paddingHorizontal: 17, paddingVertical: 15, marginBottom: 20, flexDirection: 'row', alignItems: 'center', gap: 12 }, lookFurtherActive: { backgroundColor: '#DDF2EE' }, lookFurtherCopy: { flex: 1 }, lookFurtherTitle: { color: ink, fontSize: 16, fontWeight: '900', marginBottom: 4 }, lookFurtherDetail: { color: muted, fontSize: 12, lineHeight: 18 }, lookFurtherArrow: { color: sea, fontSize: 22, fontWeight: '800' },
   homeIntro: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 8, marginBottom: 6 }, homeIntroText: { flex: 1 }, homeTitle: { color: ink, fontSize: 28, lineHeight: 32, fontWeight: '800', letterSpacing: -0.8 }, homeLead: { color: muted, fontSize: 13, lineHeight: 19, marginBottom: 16 }, placeButton: { paddingVertical: 8, paddingHorizontal: 9, borderRadius: 18, backgroundColor: '#E4F7F3', marginBottom: 4 }, placeButtonText: { color: sea, fontSize: 11, fontWeight: '800' },
   settingsButton: { backgroundColor: '#E1F4F0', borderRadius: 18, paddingHorizontal: 11, paddingVertical: 9 }, settingsButtonText: { color: sea, fontSize: 12, fontWeight: '800' }, searchToggle: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, paddingHorizontal: 17, paddingVertical: 14, marginBottom: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, searchToggleText: { color: ink, fontSize: 15, fontWeight: '800' }, searchChevron: { color: sea, fontSize: 23, lineHeight: 25, fontWeight: '500' }, searchPanel: { marginBottom: 14 },

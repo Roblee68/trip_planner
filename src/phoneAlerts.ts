@@ -44,7 +44,7 @@ export function syncImportedReminders(finds: ImportedFind[]): Promise<void> {
   const work = async () => {
     const existing = await Notifications.getAllScheduledNotificationsAsync();
     const own = existing.filter(request => typeof request.content.data?.pbbImportedId === 'string');
-    const desired = new Map(finds.filter(find => find.reminderAt && Date.parse(find.reminderAt) > Date.now() + 60_000).map(find => [find.id, find]));
+    const desired = new Map(finds.filter(find => find.reminderAt && Date.parse(find.reminderAt) > Date.now()).map(find => [find.id, find]));
     for (const request of own) {
       const id = String(request.content.data?.pbbImportedId);
       if (!desired.has(id) || request.content.data?.reminderAt !== desired.get(id)?.reminderAt) await Notifications.cancelScheduledNotificationAsync(request.identifier);

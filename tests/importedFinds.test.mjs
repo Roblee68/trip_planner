@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findMentionsArea, mergeSelectedFinds, orderFindsForArea, parseLocalDateTime, reminderSuggestion, safeSourceUrl } from '../src/importedFinds.ts';
+import { findMentionsArea, mergeSelectedFinds, nextLocalMorning, orderFindsForArea, parseLocalDateTime, reminderSuggestion, safeSourceUrl } from '../src/importedFinds.ts';
 
 test('calendar and reminder dates reject invalid or nonexistent local times', () => {
   assert.equal(parseLocalDateTime('2026-02-30', '09:00'), null);
@@ -12,6 +12,14 @@ test('suggested reminder stays before a confirmed event', () => {
   const reminder = reminderSuggestion('2026-11-20', '19:00', 3);
   assert.equal(reminder?.getDate(), 17);
   assert.equal(reminder?.getHours(), 19);
+});
+
+test('next morning gives an event with an unconfirmed date a valid reminder choice', () => {
+  const now = new Date(2026, 10, 8, 15, 30);
+  const reminder = nextLocalMorning(now);
+  assert.equal(reminder.getDate(), 9);
+  assert.equal(reminder.getHours(), 9);
+  assert.equal(reminder.getMinutes(), 0);
 });
 
 test('an imported source must be a plain HTTPS URL', () => {

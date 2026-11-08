@@ -72,6 +72,13 @@ export function reminderSuggestion(eventDate: string, eventTime: string, daysBef
   return reminder;
 }
 
+export function nextLocalMorning(now = new Date()): Date {
+  const morning = new Date(now);
+  morning.setHours(9, 0, 0, 0);
+  if (morning.getTime() <= now.getTime() + 60_000) morning.setDate(morning.getDate() + 1);
+  return morning;
+}
+
 export function localInputParts(date: Date): { date: string; time: string } {
   return {
     date: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
