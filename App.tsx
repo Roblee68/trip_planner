@@ -42,10 +42,51 @@ const sampleImages: Record<string, number> = {
   printmaking: require('./assets/pottery-workshop.png'),
   'forest-bath': require('./assets/birding-walk.png'),
 };
-const sponsoredConcepts = [
-  { id: 'holiday-village', title: 'A Christmas village worth the journey', summary: 'Twinkling stalls, handmade finds and a winter evening that feels like a story. Let your scout find a real holiday market that fits your city and travel range.', image: require('./assets/christmas-market-preview.png'), prompt: 'Find a real Christmas or holiday market worth a day trip, with official dates and source links' },
-  { id: 'winter-wonder', title: 'A bigger winter adventure', summary: 'Picture a dramatic landscape, a guided outing and a day you will remember. Your scout can look for a real winter adventure within your travel limits.', image: require('./assets/winter-adventure-preview.png'), prompt: 'Find a real memorable winter adventure or guided nature outing within my travel range, with official dates and source links' },
+type FeaturedDestination = { id: string; title: string; place: string; summary: string; timing: string; price: string; sourceUrl: string; sourceName: string; imageUrl?: string; imageCredit?: string; fallbackImage: number };
+const featuredDestinations: FeaturedDestination[] = [
+  {
+    id: 'visions-of-magic', title: 'Harry Potter: Visions of Magic', place: 'Toronto · YZD, 30 Hanover Rd',
+    summary: 'Explore an interactive wizarding world art experience. Allow about 45 minutes and choose a timed entry.',
+    timing: 'Now open · timed tickets', price: 'From CAD $28 + taxes and fees',
+    sourceUrl: 'https://harrypottervisionsofmagic.com/ca/', sourceName: 'Harry Potter: Visions of Magic',
+    imageUrl: 'https://harrypottervisionsofmagic.com/ca/wp-content/uploads/sites/6/2023/08/Homepage-Main-Header.jpeg',
+    fallbackImage: require('./assets/wizard-experience-fallback.jpg'),
+  },
+  {
+    id: 'muskoka-dog-sledding', title: 'Drive a dog sled through Muskoka', place: 'Huntsville · North Ridge Ranch',
+    summary: 'Learn to mush your own team on private forest trails. Choose a one-hour or half-day guided tour.',
+    timing: 'Winter 2026/27 reservations open', price: 'One-hour tour from CAD $229 + HST per adult',
+    sourceUrl: 'https://www.northridgeranch.ca/tours', sourceName: 'North Ridge Ranch',
+    imageUrl: 'https://images.squarespace-cdn.com/content/v1/64c921013fc0dc392373ec93/69f04d51-500c-4677-a163-e787f0b2546d/North%2BRidge%2BRanch%2B1.jpg',
+    fallbackImage: require('./assets/dog-sled-fallback.jpg'),
+  },
+  {
+    id: 'churchill-polar-bears', title: 'Churchill polar bear adventure', place: 'Churchill, Manitoba · depart Winnipeg',
+    summary: 'Spend five nights exploring Churchill, including two full days watching wildlife from a Tundra Buggy.',
+    timing: 'October–November 2027 departures', price: 'Paid tour · ask operator for price',
+    sourceUrl: 'https://frontiersnorth.com/adventures/polar-bears/classic-churchill-polar-bear-adventure/', sourceName: 'Frontiers North Adventures',
+    imageUrl: 'https://frontiersnorthadv.directus.app/assets/94a05f20-8de5-4582-8691-1eb46e932b23',
+    imageCredit: 'Robin Biswas / Frontiers North', fallbackImage: require('./assets/polar-bear-fallback.jpg'),
+  },
 ];
+
+function FeaturedDestinationCard({ destination }: { destination: FeaturedDestination }) {
+  const [useFallback, setUseFallback] = useState(!destination.imageUrl);
+  return <View style={styles.featuredCard}>
+    <ImageBackground source={useFallback ? destination.fallbackImage : { uri: destination.imageUrl! }} onError={() => setUseFallback(true)} style={styles.featuredPhoto} imageStyle={styles.heroImageCorners}>
+      <Text style={styles.photoLabel}>{useFallback ? 'AI ILLUSTRATION' : `PHOTO: ${destination.imageCredit ?? destination.sourceName}`}</Text>
+    </ImageBackground>
+    <View style={styles.featuredCardBody}>
+      <Text style={styles.featuredCardLabel}>REAL EXPERIENCE · PAID</Text>
+      <Text style={styles.cardTitle}>{destination.title}</Text>
+      <Text style={styles.summary}>{destination.summary}</Text>
+      <Text style={styles.featuredDetail}>{destination.place}</Text>
+      <Text style={styles.featuredDetail}>{destination.timing}</Text>
+      <Text style={styles.featuredPrice}>{destination.price}</Text>
+      <Pressable style={[styles.action, styles.actionSmall, styles.featuredLink]} accessibilityRole="link" onPress={() => { void Linking.openURL(destination.sourceUrl); }}><Text style={styles.actionText}>Official details ↗</Text></Pressable>
+    </View>
+  </View>;
+}
 
 function Pill({ label, active, onPress }: { label: string; active?: boolean; onPress: () => void }) {
   return <Pressable onPress={onPress} style={[styles.pill, active && styles.pillActive]}><Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text></Pressable>;
@@ -304,8 +345,7 @@ export default function App() {
   const agentSuggestions = useMemo(() => remoteScoutConfigured ? remoteSuggestions.map(suggestion => ({ item: suggestion.item, reasons: [suggestion.reason] })) : activeRequest === null ? [] : recommendForIntent(localExamples, discoverPreferences, feedback, savedIds, interpretIntent(activeRequest), agentMode).slice(0, 3), [localExamples, discoverPreferences, feedback, savedIds, activeRequest, agentMode, remoteSuggestions]);
   const visible = ranked.filter(item => (category === 'All' || item.category === category) && (!query || `${item.title} ${item.category} ${item.tags.join(' ')} ${item.location}`.toLowerCase().includes(query.toLowerCase())));
   const diverse = showDiverse ? [...visible].sort((a, b) => Number(preferences.interests.includes(a.category)) - Number(preferences.interests.includes(b.category))) : visible;
-  const sponsoredPreviews = showingTorontoSamples && category === 'All' && !query.trim() ? diverse.filter(item => item.id === 'pottery' || item.id === 'ballroom') : [];
-  const organicItems = diverse.filter(item => !sponsoredPreviews.some(sponsored => sponsored.id === item.id));
+  const organicItems = diverse;
   const homeOrganicItems = showMoreIdeas || searchOpen || category !== 'All' || !!query.trim() ? organicItems : organicItems.slice(0, 3);
   const drawSerendipity = async () => {
     if (serendipityLoading) return;
@@ -597,12 +637,6 @@ export default function App() {
       if (requestId === nowRequestId.current) setNowMessage(error instanceof Error ? `The scout is unavailable: ${error.message}` : 'The scout is unavailable. Please try again.');
     } finally { if (requestId === nowRequestId.current) setNowLoading(false); }
   };
-  const findSponsoredConcept = (prompt: string) => {
-    setSearchOpen(true);
-    setAgentPrompt(prompt);
-    void runScout(prompt);
-    scrollRef.current?.scrollTo({ y: 350, animated: true });
-  };
   const resetRouteResults = () => { routeRequestId.current += 1; setRouteIdeas([]); setRouteMessage(''); setRouteLoading(false); setRouteSearched(false); };
   const runRouteScout = async () => {
     const requestId = ++routeRequestId.current;
@@ -718,7 +752,7 @@ export default function App() {
       </View> : tab === 'Discover' ? <View>
         <ImageBackground source={require('./assets/discovery-hero-v2.png')} style={styles.heroImage} imageStyle={styles.heroImageCorners}><Text style={styles.heroKicker}>MAKE A STORY OF IT</Text><Text style={styles.heroTitle}>{'Find the\nunexpected.'}</Text></ImageBackground>
         <View style={styles.homeIntro}><View style={styles.homeIntroText}><Text style={styles.sectionKicker}>LOCAL INSPIRATION</Text><Text style={styles.homeTitle}>{showingTorontoSamples ? 'Toronto ideas.' : `${preferences.place.split(',')[0].trim() || 'Local'} ideas.`}</Text></View><Pressable onPress={() => setTab('Settings')} style={styles.placeButton}><Text style={styles.placeButtonText}>⌖  Change place</Text></Pressable></View>
-        <Text style={styles.homeLead}>{showingTorontoSamples ? 'Toronto sample ideas and sponsored concept previews appear below. These are examples, not confirmed events.' : homeWebIdeas.length || homeScoutCitations.length ? `Your scout found source-linked ideas for ${preferences.place}. Check each source before making plans.` : remoteScoutConfigured ? `Ask your scout to check current public sources for activities that fit your settings in ${preferences.place}.` : `No source-linked ideas for ${preferences.place} yet. The live web scout is being connected.`}</Text>
+        <Text style={styles.homeLead}>{showingTorontoSamples ? 'Toronto sample ideas appear below. Featured destinations link to real organizer listings.' : homeWebIdeas.length || homeScoutCitations.length ? `Your scout found source-linked ideas for ${preferences.place}. Check each source before making plans.` : remoteScoutConfigured ? `Ask your scout to check current public sources for activities that fit your settings in ${preferences.place}.` : `No source-linked ideas for ${preferences.place} yet. The live web scout is being connected.`}</Text>
         <Action label={homeLoading ? 'Scouting for you…' : 'Find ideas for me'} onPress={() => { void runHomeScout(); }} />
         {homeLoading && <Text style={styles.notice}>Checking public sources near {preferences.place}…</Text>}
         {autoScoutStatus ? <Text style={styles.scoutStatus}>✦  {autoScoutStatus}</Text> : null}
@@ -757,13 +791,12 @@ export default function App() {
         {alerts.length > 0 && <Pressable onPress={() => setTab('Settings')} style={styles.alertBanner}><Text style={styles.alertBannerTitle}>✦ {alerts.length} timely {alerts.length === 1 ? 'find' : 'finds'} for you</Text><Text style={styles.alertBannerBody}>See what fits your interests →</Text></Pressable>}
         <View style={styles.rowBetween}><Text style={styles.subheading}>{showDiverse ? 'A different direction' : showingTorontoSamples ? 'Toronto sample ideas' : 'Local ideas for you'}</Text><Text style={styles.resultCount}>{homeOrganicItems.length} shown</Text></View>
         {catalogLoading ? <Text style={styles.notice}>Loading ideas…</Text> : homeOrganicItems.length ? homeOrganicItems.map(item => <View key={item.id}><Text style={styles.whyText}>{fitReason(item)}</Text>{itemCard(item)}</View>) : homeWebIdeas.length || homeScoutCitations.length ? <Text style={styles.helper}>Open each source above to check the latest details with the organizer.</Text> : <View style={styles.empty}><Text style={styles.emptyTitle}>No ideas here yet.</Text><Text style={styles.summary}>{remoteScoutConfigured ? 'Try another interest, budget, or travel radius in Settings.' : 'Live web discoveries are not connected in this preview yet.'}</Text></View>}
-        <View style={styles.sponsoredSection}><View style={styles.rowBetween}><Text style={styles.sponsoredKicker}>SPONSORED SPOTS</Text><Text style={styles.sponsoredPreview}>PREVIEW</Text></View><Text style={styles.sponsoredDisclosure}>Illustrative placement concepts. No partner has paid for these, and they are not confirmed events. Sponsored spots stay separate from your personal recommendations.</Text>
-          {sponsoredConcepts.map(concept => <View key={concept.id} style={styles.sponsoredConcept}><ImageBackground source={concept.image} style={styles.sponsoredPhoto} imageStyle={styles.heroImageCorners}><Text style={styles.photoLabel}>ILLUSTRATIVE PHOTO</Text></ImageBackground><View style={styles.sponsoredConceptBody}><Text style={styles.sponsoredCardLabel}>SPONSORED PREVIEW · CONCEPT</Text><Text style={styles.cardTitle}>{concept.title}</Text><Text style={styles.summary}>{concept.summary}</Text><View style={styles.cardActions}><Action label="Find real options" onPress={() => findSponsoredConcept(concept.prompt)} small /></View></View></View>)}
-          {sponsoredPreviews.map(item => <View key={item.id}><Text style={styles.sponsoredCardLabel}>SPONSORED PREVIEW · SAMPLE</Text>{itemCard(item)}</View>)}
+        <View style={styles.featuredSection}><View style={styles.rowBetween}><Text style={styles.featuredKicker}>WORTH THE TRIP</Text><Text style={styles.featuredBadge}>PB&B PICKS</Text></View><Text style={styles.featuredDisclosure}>Real paid experiences selected by PB&B. No organizer paid for placement. Prices and availability were checked November 8, 2026; confirm them on the official page before booking.</Text>
+          {featuredDestinations.map(destination => <FeaturedDestinationCard key={destination.id} destination={destination} />)}
         </View>
         {!showMoreIdeas && organicItems.length > 3 && !searchOpen && <Action label="See more local ideas" onPress={() => setShowMoreIdeas(true)} secondary />}
         <Action label={showDiverse ? 'Back to your picks' : 'Show me something different'} onPress={() => setShowDiverse(value => !value)} secondary />
-        <Text style={styles.footerNote}>Example photos are illustrative. Check an organizer's source before travelling to a real event.</Text>
+        <Text style={styles.footerNote}>Sample idea photos are illustrative. Featured destination photos come from their organizers when available.</Text>
       </View> : tab === 'Now' ? <View>
         <Text style={styles.sectionKicker}>SPONTANEOUS</Text><Text style={styles.h1}>What can I do today?</Text><Text style={styles.lead}>Your scout looks for source-linked ideas near {preferences.place} that fit the time you have, your interests and your budget.</Text>
         <Text style={styles.label}>Time available, including travel</Text><View style={styles.chipRow}>{[1, 2, 3, 5].map(value => <Pill key={value} label={`${value} hr`} active={timeHours === value} onPress={() => { nowRequestId.current += 1; setTimeHours(value); setNowIdeas([]); setNowMessage(''); setNowLoading(false); }} />)}</View>
@@ -889,6 +922,6 @@ const styles = StyleSheet.create({
   nowBudgetInput: { width: 140, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C9DCDA', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, color: ink, fontSize: 18, fontWeight: '800', marginBottom: 18 },
   serendipityToggle: { backgroundColor: '#B9ED5C', borderRadius: 2, borderWidth: 2, borderColor: '#103D46', paddingHorizontal: 18, paddingVertical: 15, marginBottom: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, serendipityTitle: { color: ink, fontSize: 17, fontWeight: '900' }, serendipitySubtitle: { color: ink, fontSize: 11, marginTop: 3 }, serendipityChevron: { color: ink, fontSize: 24 }, serendipityPanel: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, padding: 17, marginBottom: 20 }, serendipityIntro: { color: muted, fontSize: 14, lineHeight: 20, marginBottom: 18 }, serendipityRule: { color: muted, fontSize: 13, lineHeight: 19, marginBottom: 12 },
   planeTeaser: { height: 170, borderRadius: 18, overflow: 'hidden', justifyContent: 'flex-end', marginBottom: 10 }, planeTeaserShade: { backgroundColor: 'rgba(16,61,70,0.72)', padding: 14 }, planeTeaserKicker: { color: '#B9ED5C', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, planeTeaserTitle: { color: '#FFFFFF', fontSize: 18, lineHeight: 22, fontWeight: '900', maxWidth: 220, marginTop: 4 },
-  sponsoredSection: { backgroundColor: '#E7F3F0', borderRadius: 2, borderWidth: 2, borderColor: '#103D46', padding: 14, marginBottom: 20 }, sponsoredKicker: { color: sea, fontSize: 10, fontWeight: '900', letterSpacing: 1.3 }, sponsoredPreview: { color: sea, fontSize: 10, fontWeight: '900', backgroundColor: '#B9ED5C', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 2 }, sponsoredDisclosure: { color: muted, fontSize: 11, lineHeight: 16, marginVertical: 10 }, sponsoredConcept: { backgroundColor: '#FFFFFF', borderRadius: 2, overflow: 'hidden', marginBottom: 16, borderWidth: 2, borderColor: '#B9ED5C' }, sponsoredPhoto: { height: 190, justifyContent: 'flex-end', alignItems: 'flex-end', padding: 12 }, sponsoredConceptBody: { padding: 17 }, sponsoredCardLabel: { color: sea, backgroundColor: '#B9ED5C', alignSelf: 'flex-start', borderRadius: 2, paddingHorizontal: 9, paddingVertical: 6, fontSize: 10, fontWeight: '900', letterSpacing: 0.7, marginBottom: 8 },
+  featuredSection: { backgroundColor: '#E7F3F0', borderRadius: 2, borderWidth: 2, borderColor: '#103D46', padding: 14, marginBottom: 20 }, featuredKicker: { color: sea, fontSize: 10, fontWeight: '900', letterSpacing: 1.3 }, featuredBadge: { color: sea, fontSize: 10, fontWeight: '900', backgroundColor: '#B9ED5C', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 2 }, featuredDisclosure: { color: muted, fontSize: 11, lineHeight: 16, marginVertical: 10 }, featuredCard: { backgroundColor: '#FFFFFF', borderRadius: 2, overflow: 'hidden', marginBottom: 16, borderWidth: 2, borderColor: '#B9ED5C' }, featuredPhoto: { height: 190, justifyContent: 'flex-end', alignItems: 'flex-end', padding: 12 }, featuredCardBody: { padding: 17 }, featuredCardLabel: { color: sea, backgroundColor: '#B9ED5C', alignSelf: 'flex-start', borderRadius: 2, paddingHorizontal: 9, paddingVertical: 6, fontSize: 10, fontWeight: '900', letterSpacing: 0.7, marginBottom: 8 }, featuredDetail: { color: muted, fontSize: 12, lineHeight: 17, marginTop: 5 }, featuredPrice: { color: ink, fontSize: 13, fontWeight: '800', marginTop: 8 }, featuredLink: { alignSelf: 'flex-start', marginTop: 12 },
   tabBar: { flexDirection: 'row', borderTopWidth: 1, borderColor: '#DCE8E4', backgroundColor: '#FFFFFF', paddingBottom: 5, paddingTop: 6 }, tab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 }, tabIcon: { color: '#667F82', fontSize: 22 }, tabText: { color: '#667F82', fontSize: 10, fontWeight: '700' }, tabActive: { color: sea },
 });
