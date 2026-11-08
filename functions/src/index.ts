@@ -8,6 +8,7 @@ import { scout } from './scout.js';
 import { scoutWeb } from './webScout.js';
 import { parseImportScanInput, scanImportedFind } from './importScan.js';
 import { dailyOpportunityScan, saveDailyScout } from './dailyService.js';
+import { weeklyFeaturedAdventures } from './featuredAdventures.js';
 
 initializeApp();
 const openaiApiKey = defineSecret('OPENAI_API_KEY');
@@ -23,7 +24,7 @@ async function checkDailyLimit(uid: string) {
     const count = Number(snapshot.data()?.count ?? 0);
     const globalCount = Number(globalSnapshot.data()?.count ?? 0);
     if (count >= 30) throw new HttpsError('resource-exhausted', 'Daily scout limit reached. Please try tomorrow.');
-    if (globalCount >= 40) throw new HttpsError('resource-exhausted', 'The scout is at its preview limit for today. Please try tomorrow.');
+    if (globalCount >= 100) throw new HttpsError('resource-exhausted', 'The scout is at its preview limit for today. Please try tomorrow.');
     transaction.set(ref, { count: count + 1, updatedAt: new Date().toISOString() }, { merge: true });
     transaction.set(globalRef, { count: globalCount + 1, updatedAt: new Date().toISOString() }, { merge: true });
   });
@@ -61,6 +62,16 @@ export const suggestExperiences = onCall({ region: 'northamerica-northeast2', in
 export const setDailyScout = onCall({ region: 'northamerica-northeast2' }, async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in before changing daily alerts.');
   return saveDailyScout(request.auth.uid, request.data);
+});
+
+export const getWeeklyFeaturedAdventures = onCall({ region: 'northamerica-northeast2', invoker: 'public', secrets: [openaiApiKey], timeoutSeconds: 120, memory: '512MiB', maxInstances: 1 }, async request => {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in before viewing featured adventures.');
+  if (!openaiApiKey.value()) throw new HttpsError('failed-precondition', 'The adventure scout is not configured yet.');
+  try { return await weeklyFeaturedAdventures(); }
+  catch (error) {
+    console.error('Weekly featured adventure refresh failed', error);
+    throw new HttpsError('internal', 'Weekly adventures could not be refreshed. Please try again later.');
+  }
 });
 
 export { dailyOpportunityScan };

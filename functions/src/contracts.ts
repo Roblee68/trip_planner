@@ -37,6 +37,7 @@ export type ScoutRequest = {
   refinement: 'balanced' | 'different' | 'cheaper' | 'closer';
   occasion?: 'today' | 'route' | 'surprise' | 'any';
   localDate?: string;
+  localTime?: string;
   timeAvailableHours?: number;
   routeDestination?: string;
   routeStyle?: 'highway' | 'towns' | 'either';

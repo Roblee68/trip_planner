@@ -21,9 +21,11 @@ test('today search requires a valid local date and limited available time', () =
   const base = { prompt: 'Today', place: 'Paris, France', currency: 'EUR', maxBudget: 50, maxDistanceKm: 30, occasion: 'today' };
   assert.throws(() => parseScoutRequest({ ...base, localDate: '2026-11-07', timeAvailableHours: 0 }));
   assert.throws(() => parseScoutRequest({ ...base, localDate: '07/11/2026', timeAvailableHours: 2 }));
-  const selected = parseScoutRequest({ ...base, localDate: '2026-11-07', timeAvailableHours: 2 });
+  const selected = parseScoutRequest({ ...base, localDate: '2026-11-07', localTime: '18:30', timeAvailableHours: 2 });
   assert.equal(selected.occasion, 'today');
   assert.equal(selected.timeAvailableHours, 2);
+  assert.equal(selected.localTime, '18:30');
+  assert.equal(parseScoutRequest({ ...base, localDate: '2026-11-07', localTime: '25:00', timeAvailableHours: 2 }).localTime, undefined);
 });
 
 test('route search keeps the journey and detour bounded', () => {

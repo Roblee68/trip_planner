@@ -17,6 +17,7 @@ export function parseScoutRequest(value: unknown): ScoutRequest {
   const refinement = ['balanced', 'different', 'cheaper', 'closer'].includes(String(data.refinement)) ? data.refinement as ScoutRequest['refinement'] : 'balanced';
   const occasion = data.occasion === 'today' ? 'today' : data.occasion === 'route' ? 'route' : data.occasion === 'surprise' ? 'surprise' : 'any';
   const localDate = typeof data.localDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.localDate) ? data.localDate : undefined;
+  const localTime = typeof data.localTime === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(data.localTime) ? data.localTime : undefined;
   const timeAvailableHours = Number(data.timeAvailableHours);
   const routeDestination = typeof data.routeDestination === 'string' ? data.routeDestination.trim() : '';
   const routeStyle = ['highway', 'towns', 'either'].includes(String(data.routeStyle)) ? data.routeStyle as ScoutRequest['routeStyle'] : 'either';
@@ -27,7 +28,7 @@ export function parseScoutRequest(value: unknown): ScoutRequest {
   if ((latitude === undefined) !== (longitude === undefined) || (latitude !== undefined && (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude! < -180 || longitude! > 180))) throw new Error('Invalid location');
   if (occasion === 'today' && (!localDate || !Number.isInteger(timeAvailableHours) || timeAvailableHours < 1 || timeAvailableHours > 12)) throw new Error('Invalid today request');
   if (occasion === 'route' && (routeDestination.length < 3 || routeDestination.length > 120 || routeDestination.toLowerCase() === place.toLowerCase() || routeVia.length > 100 || !Number.isInteger(detourMinutes) || detourMinutes < 0 || detourMinutes > 120 || (routeTiming === 'today' && !localDate))) throw new Error('Invalid route request');
-  return { prompt, place, currency, latitude, longitude, maxBudget, maxDistanceKm, interests, topics, travelModes, likedExamples: occasion === 'surprise' ? [] : likedExamples, refinement, occasion, localDate, timeAvailableHours: occasion === 'today' ? timeAvailableHours : undefined,
+  return { prompt, place, currency, latitude, longitude, maxBudget, maxDistanceKm, interests, topics, travelModes, likedExamples: occasion === 'surprise' ? [] : likedExamples, refinement, occasion, localDate, localTime, timeAvailableHours: occasion === 'today' ? timeAvailableHours : undefined,
     routeDestination: occasion === 'route' ? routeDestination : undefined, routeStyle: occasion === 'route' ? routeStyle : undefined, routeVia: occasion === 'route' ? routeVia : undefined,
     detourMinutes: occasion === 'route' ? detourMinutes : undefined, routeTiming: occasion === 'route' ? routeTiming : undefined };
 }

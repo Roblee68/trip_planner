@@ -23,6 +23,8 @@ type Pick = {
 };
 export type ScoutCitation = { startIndex: number; endIndex: number; url: string; title: string };
 export type WebIdea = { id: string; title: string; summary: string; reason: string; dateText: string; eventDate?: string; priceText: string; venue: string; address: string | null; place: string; sourceUrl: string; foundAt: string };
+export type WeeklyFeaturedAdventure = { id: string; title: string; summary: string; place: string; timing: string; price: string; sourceUrl: string; sourceName: string; imageUrl: string };
+export type WeeklyFeaturedResponse = { adventures: WeeklyFeaturedAdventure[]; checkedAt: string | null; expiresAt: string | null; refreshing?: boolean };
 type ScoutResponse = { message: string; picks: Pick[]; followUp: string | null; mode: 'sample' | 'live' | 'web'; citations?: ScoutCitation[]; ideas?: WebIdea[] };
 
 export function pickToExperience(pick: Pick): Experience {
@@ -45,6 +47,7 @@ export async function askRemoteScout(prompt: string, preferences: Preferences, r
   const call = httpsCallable(getFunctions(app, 'northamerica-northeast2'), 'suggestExperiences');
   const localNow = new Date();
   const localDate = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
+  const localTime = `${String(localNow.getHours()).padStart(2, '0')}:${String(localNow.getMinutes()).padStart(2, '0')}`;
   const response = await call({
     prompt: prompt.trim() || 'Find an interesting experience for me',
     place: preferences.place.trim(), currency: preferences.currency.trim().toUpperCase(),
@@ -53,6 +56,7 @@ export async function askRemoteScout(prompt: string, preferences: Preferences, r
     likedExamples: surprise ? [] : likedExamples.slice(0, 12),
     occasion: route ? 'route' : todayHours ? 'today' : surprise ? 'surprise' : 'any',
     localDate: todayHours || route?.timing === 'today' ? localDate : undefined,
+    localTime: todayHours || route?.timing === 'today' ? localTime : undefined,
     timeAvailableHours: todayHours,
     routeDestination: route?.destination.trim(), routeStyle: route?.style, routeVia: route?.via.trim(),
     detourMinutes: route?.detourMinutes, routeTiming: route?.timing,
@@ -61,6 +65,15 @@ export async function askRemoteScout(prompt: string, preferences: Preferences, r
 }
 
 export type SharedFindScan = { finds: ExtractedFind[]; webLookup: 'matched' | 'no-match' | 'failed' | 'no-clues' };
+export async function getWeeklyFeaturedAdventures(): Promise<WeeklyFeaturedResponse> {
+  if (!remoteScoutConfigured) throw new Error('The live scout is not connected on this device.');
+  const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  if (!auth.currentUser) await signInAnonymously(auth);
+  const call = httpsCallable<Record<string, never>, WeeklyFeaturedResponse>(getFunctions(app, 'northamerica-northeast2'), 'getWeeklyFeaturedAdventures');
+  const result = await call({});
+  return result.data;
+}
 export async function scanSharedFind(input: { imageBase64?: string; imageMime?: 'image/jpeg' | 'image/png'; sourceUrl?: string; place: string }): Promise<SharedFindScan> {
   if (!remoteScoutConfigured) throw new Error('The live scout is not connected on this device. You can enter the details yourself.');
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
