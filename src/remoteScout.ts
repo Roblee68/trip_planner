@@ -64,7 +64,7 @@ export async function askRemoteScout(prompt: string, preferences: Preferences, r
   return response.data as ScoutResponse;
 }
 
-export type SharedFindScan = { finds: ExtractedFind[]; webLookup: 'matched' | 'no-match' | 'failed' | 'no-clues' };
+export type SharedFindScan = { finds: ExtractedFind[]; webLookup: 'matched' | 'no-match' | 'failed' | 'no-clues' | 'not-requested' };
 export async function getWeeklyFeaturedAdventures(): Promise<WeeklyFeaturedResponse> {
   if (!remoteScoutConfigured) throw new Error('The live scout is not connected on this device.');
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
@@ -74,7 +74,7 @@ export async function getWeeklyFeaturedAdventures(): Promise<WeeklyFeaturedRespo
   const result = await call({});
   return result.data;
 }
-export async function scanSharedFind(input: { imageBase64?: string; imageMime?: 'image/jpeg' | 'image/png'; sourceUrl?: string; place: string }): Promise<SharedFindScan> {
+export async function scanSharedFind(input: { imageBase64?: string; imageMime?: 'image/jpeg' | 'image/png'; sourceUrl?: string; place: string; lookupMode?: 'extract' | 'selected'; selectedFinds?: ExtractedFind[] }): Promise<SharedFindScan> {
   if (!remoteScoutConfigured) throw new Error('The live scout is not connected on this device. You can enter the details yourself.');
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(app);

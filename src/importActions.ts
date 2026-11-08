@@ -1,6 +1,28 @@
 import * as Calendar from 'expo-calendar';
 import * as FileSystem from 'expo-file-system/legacy';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { parseLocalDateTime, parseLocalDate, type ImportedFind } from './importedFinds';
+
+export async function prepareImageForScan(uri: string): Promise<{ imageBase64: string; imageMime: 'image/jpeg' }> {
+  const original = await ImageManipulator.manipulate(uri).renderAsync();
+  const longestSide = Math.max(original.width, original.height);
+  for (const { quality, maxSide } of [
+    { quality: 0.82, maxSide: 0 },
+    { quality: 0.68, maxSide: 3200 },
+    { quality: 0.55, maxSide: 2400 },
+  ]) {
+    const image = maxSide && longestSide > maxSide
+      ? await ImageManipulator.manipulate(original).resize({ width: Math.max(1, Math.round(original.width * maxSide / longestSide)) }).renderAsync()
+      : original;
+    const result = await image.saveAsync({ format: SaveFormat.JPEG, compress: quality, base64: true });
+    try {
+      if (result.base64 && result.base64.length < 3_800_000) return { imageBase64: result.base64, imageMime: 'image/jpeg' };
+    } finally {
+      await FileSystem.deleteAsync(result.uri, { idempotent: true }).catch(() => {});
+    }
+  }
+  throw new Error('This image is unusually large. Crop it to the event details and try again.');
+}
 
 export async function keepImportedScreenshot(uri: string, id: string, mimeType?: string): Promise<string> {
   const root = FileSystem.documentDirectory;

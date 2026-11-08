@@ -9,6 +9,14 @@ test('screenshots are bounded and require a supported image type', () => {
   assert.equal(parseImportScanInput({ imageBase64: 'a'.repeat(101), imageMime: 'image/jpeg', sourceUrl: 'https://organizer.example/post' }).sourceUrl, 'https://organizer.example/post');
 });
 
+test('selected lookup accepts only a short list of named photo leads', () => {
+  const lead = { title: 'Holiday Market', dateText: 'Nov 14', eventDate: '', eventTime: '', venue: 'Town Hall', place: 'Hamilton' };
+  assert.equal(parseImportScanInput({ lookupMode: 'extract', imageBase64: 'a'.repeat(101), imageMime: 'image/jpeg' }).lookupMode, 'extract');
+  assert.deepEqual(parseImportScanInput({ lookupMode: 'selected', selectedFinds: [lead], place: 'Hamilton, Canada' }).selectedFinds?.[0], lead);
+  assert.throws(() => parseImportScanInput({ lookupMode: 'selected', selectedFinds: Array(6).fill(lead) }));
+  assert.throws(() => parseImportScanInput({ lookupMode: 'selected', selectedFinds: [{ ...lead, title: '' }] }));
+});
+
 test('extracted leads keep ambiguous dates as text and deduplicate rows', () => {
   const rows = eligibleExtractedFinds({ finds: [
     { title: 'Holiday Market', dateText: 'Nov 14', eventDate: '', eventTime: '', venue: 'Town Hall', place: 'Hamilton' },

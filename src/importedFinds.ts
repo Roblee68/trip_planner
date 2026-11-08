@@ -16,6 +16,15 @@ export type ImportedFind = Omit<ExtractedFind, 'sourceUrl'> & {
   reminderAt: string | null;
 };
 
+export function findMentionsArea(find: ExtractedFind, area: string): boolean {
+  const words = (value: string) => value.toLocaleLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const city = words(area.split(',')[0] ?? '');
+  if (city.length < 3) return false;
+  const visiblePlace = words(find.place);
+  const haystack = visiblePlace || words(`${find.title} ${find.venue}`);
+  return ` ${haystack} `.includes(` ${city} `);
+}
+
 export function safeSourceUrl(value: string): string | null {
   try {
     const url = new URL(value.trim());

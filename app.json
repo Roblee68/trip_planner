@@ -55,6 +55,7 @@
           "writeOnlyCalendarPermission": "Allow Detours & Escapades to add a find to your calendar when you choose."
         }
       ],
+      "./plugins/withFriendlyShareName",
       [
         "expo-sharing",
         {
