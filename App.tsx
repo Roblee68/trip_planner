@@ -17,9 +17,10 @@ import { planReminders } from './src/reminders';
 import { listenForSourceTaps, phoneAlertsAllowed, requestPhoneAlerts, sendSampleAlert, syncImportedReminders, syncPhoneReminders } from './src/phoneAlerts';
 import { dailyScoutConfigured, getDailyPushToken, saveDailyScoutSubscription } from './src/dailyScout';
 import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/agent';
-import { askRemoteScout, getWeeklyFeaturedAdventures, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse } from './src/remoteScout';
+import { askRemoteScout, getWeeklyFeaturedAdventures, getWeeklyLocalEvents, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse, type WeeklyLocalResponse, type WeeklyLocalEvent } from './src/remoteScout';
 import { findMentionsArea, localInputParts, mergeSelectedFinds, nextLocalMorning, orderFindsForArea, parseLocalDate, parseLocalDateTime, reminderSuggestion, safeSourceUrl, type ExtractedFind, type ImportedFind } from './src/importedFinds';
 import { addImportedFindToCalendar, keepImportedScreenshot, prepareImageForScan, removeImportedScreenshot } from './src/importActions';
+import { addDaysToDateKey, localDateKey, visibleWeeklyLocalEvents } from './src/weeklyLocal';
 
 type Tab = 'Discover' | 'Now' | 'Along the Way' | 'Saved' | 'Settings';
 type NowFocus = 'Anything' | 'Outdoors' | 'Creative' | 'Food' | 'Unexpected';
@@ -28,9 +29,11 @@ type LikedExample = { id: string; title: string };
 type StoredState = { preferences: Preferences; feedback: Feedback; savedIds: string[]; savedItems: Experience[]; savedWebIdeas: WebIdea[]; importedFinds: ImportedFind[]; likedExamples: LikedExample[] };
 const STORAGE_KEY = 'pbb-local-state-v1';
 const FEATURED_STORAGE_KEY = 'pbb-weekly-featured-v2';
+const WEEKLY_LOCAL_STORAGE_PREFIX = 'pbb-weekly-local-v1-';
 const tabs: Tab[] = ['Discover', 'Now', 'Along the Way', 'Saved', 'Settings'];
 const nowFocuses: NowFocus[] = ['Anything', 'Outdoors', 'Creative', 'Food', 'Unexpected'];
 const routeFocuses: RouteFocus[] = ['Best stop', 'Views', 'Food', 'Culture', 'Unexpected'];
+const weekSymbols: Record<WeeklyLocalEvent['category'], string> = { classes: '✎', outdoors: '△', theatre: '◫', music: '♫', community: '✦', arts: '✳', food: '◌', sports: '◈', markets: '◇', other: '✧' };
 const ink = '#103D46';
 const muted = '#45656B';
 const sea = '#103D46';
@@ -99,6 +102,15 @@ function Action({ label, onPress, secondary, small }: { label: string; onPress: 
 
 function formatDate(date: string) {
   return new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function formatWeekDate(key: string, options: Intl.DateTimeFormatOptions): string {
+  return new Date(`${key}T12:00:00Z`).toLocaleDateString(undefined, { ...options, timeZone: 'UTC' });
+}
+
+function formatWeekTime(time: string): string {
+  if (!time) return 'See time';
+  return new Date(`2000-01-01T${time}:00Z`).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
 }
 
 function CitedScoutText({ message, citations }: { message: string; citations: ScoutCitation[] }) {
@@ -175,6 +187,9 @@ export default function App() {
   const [savedWebIdeas, setSavedWebIdeas] = useState<WebIdea[]>([]);
   const [weeklyFeatured, setWeeklyFeatured] = useState<WeeklyFeaturedResponse | null>(null);
   const [featuredLoading, setFeaturedLoading] = useState(false);
+  const [weeklyLocalFeed, setWeeklyLocalFeed] = useState<WeeklyLocalResponse | null>(null);
+  const [weeklyLocalLoading, setWeeklyLocalLoading] = useState(false);
+  const [weeklyLocalMessage, setWeeklyLocalMessage] = useState('');
   const [importedFinds, setImportedFinds] = useState<ImportedFind[]>([]);
   const [importOpen, setImportOpen] = useState(false);
   const [importLink, setImportLink] = useState('');
@@ -315,6 +330,42 @@ export default function App() {
     void load();
     return () => { cancelled = true; if (retryTimer) clearTimeout(retryTimer); };
   }, [hydrated]);
+  useEffect(() => {
+    if (!hydrated || tab !== 'Discover') return;
+    const place = preferences.place.trim();
+    setWeeklyLocalFeed(null);
+    setWeeklyLocalLoading(false);
+    setWeeklyLocalMessage('');
+    if (!place.includes(',')) { setWeeklyLocalMessage('Add a city and country in Settings to see this week’s list.'); return; }
+    const storageKey = `${WEEKLY_LOCAL_STORAGE_PREFIX}${encodeURIComponent(place.toLocaleLowerCase())}`;
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async (attempt = 0) => {
+      try {
+        const result = await getWeeklyLocalEvents(place);
+        if (cancelled) return;
+        if (Array.isArray(result.events) && result.checkedAt) {
+          setWeeklyLocalFeed(result);
+          setWeeklyLocalMessage('');
+          await AsyncStorage.setItem(storageKey, JSON.stringify(result));
+        }
+        if (result.refreshing && attempt < 2) retryTimer = setTimeout(() => { void refresh(attempt + 1); }, 20_000);
+      } catch { if (!cancelled) setWeeklyLocalMessage('This week’s list could not be updated. Check the source on any saved listing before making plans.'); }
+      finally { if (!cancelled) setWeeklyLocalLoading(false); }
+    };
+    const load = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(storageKey);
+        if (raw) {
+          const cached = JSON.parse(raw) as WeeklyLocalResponse;
+          if (!cancelled && Array.isArray(cached.events) && cached.place.toLocaleLowerCase() === place.toLocaleLowerCase()) setWeeklyLocalFeed(cached);
+        }
+      } catch { /* A damaged local list should not prevent a fresh area search. */ }
+      if (!cancelled && remoteScoutConfigured) { setWeeklyLocalLoading(true); await refresh(); }
+    };
+    void load();
+    return () => { cancelled = true; if (retryTimer) clearTimeout(retryTimer); };
+  }, [hydrated, preferences.place, tab]);
   useEffect(() => { if (hydrated) syncImportedReminders(importedFinds).catch(() => setImportMessage('A saved reminder could not be scheduled on this phone.')); }, [hydrated, importedFinds]);
   useEffect(() => {
     if (tab !== 'Settings') return;
@@ -390,6 +441,10 @@ export default function App() {
   const organicItems = diverse;
   const weeklyPicks: FeaturedDestination[] = weeklyFeatured?.adventures.map(adventure => ({ ...adventure, fallbackImage: require('./assets/weekly-adventure-fallback.jpg') })) ?? [];
   const visibleFeatured = weeklyPicks.length ? weeklyPicks : featuredDestinations;
+  const weeklyToday = localDateKey();
+  const weeklyEnd = addDaysToDateKey(weeklyToday, 6);
+  const weeklyVisible = visibleWeeklyLocalEvents(weeklyLocalFeed?.events ?? [], weeklyToday);
+  const weeklyDays = [...new Set(weeklyVisible.map(event => event.eventDate))];
   const homeOrganicItems = showMoreIdeas || searchOpen || category !== 'All' || !!query.trim() ? organicItems : organicItems.slice(0, 3);
   const drawSerendipity = async () => {
     if (serendipityLoading) return;
@@ -848,6 +903,24 @@ export default function App() {
         {autoScoutStatus ? <Text style={styles.scoutStatus}>✦  {autoScoutStatus}</Text> : null}
         {homeWebIdeas.length ? <Text style={styles.webIntro}>{homeScoutMessage}</Text> : homeScoutCitations.length ? <CitedScoutText message={homeScoutMessage} citations={homeScoutCitations} /> : homeScoutMessage ? <Text style={styles.notice}>{homeScoutMessage}</Text> : null}
         {homeWebIdeas.map(idea => webIdeaCard(idea))}
+        <View style={styles.weekSection}>
+          <Text style={styles.weekKicker}>NEAR YOU, SOON</Text>
+          <Text style={styles.weekTitle}>What’s on this week.</Text>
+          <Text style={styles.weekPlace}>A browseable list for {preferences.place}. Open a source to check the details.</Text>
+          <View style={styles.weekTopline}><Text style={styles.weekRange}>{formatWeekDate(weeklyToday, { month: 'short', day: 'numeric' })} – {formatWeekDate(weeklyEnd, { month: 'short', day: 'numeric' })}</Text><Text style={styles.weekCount}>{weeklyVisible.length} {weeklyVisible.length === 1 ? 'event' : 'events'}</Text></View>
+          {weeklyLocalLoading && <Text style={styles.weekStatus}>Gathering the shared area list…</Text>}
+          {weeklyLocalMessage && <Text style={styles.weekStatus}>{weeklyLocalMessage}</Text>}
+          {weeklyDays.map(date => <View key={date} style={styles.weekDay}>
+            <View style={styles.weekDayHeading}><Text style={styles.weekDayName}>{date === weeklyToday ? 'Today' : date === addDaysToDateKey(weeklyToday, 1) ? 'Tomorrow' : formatWeekDate(date, { weekday: 'long' })}</Text><Text style={styles.weekDayDate}>{formatWeekDate(date, { month: 'short', day: 'numeric' })}</Text></View>
+            {weeklyVisible.filter(event => event.eventDate === date).map(event => <Pressable key={event.id} style={styles.weekEvent} accessibilityRole="link" accessibilityLabel={`${event.title}, ${formatWeekDate(date, { month: 'long', day: 'numeric' })}, ${formatWeekTime(event.eventTime)}. Open source`} onPress={() => { const url = safeSourceUrl(event.sourceUrl); if (url) void Linking.openURL(url); }}>
+              <View style={styles.weekIcon}><Text style={styles.weekIconText}>{weekSymbols[event.category] ?? '✧'}</Text></View>
+              <View style={styles.weekEventCopy}><Text style={styles.weekEventTitle}>{event.title}</Text><Text style={styles.weekEventMeta}>{formatWeekTime(event.eventTime)} · {event.sourceName}</Text></View>
+              <Text style={styles.weekArrow}>↗</Text>
+            </Pressable>)}
+          </View>)}
+          {!weeklyDays.length && !weeklyLocalLoading && <Text style={styles.weekEmpty}>{remoteScoutConfigured ? 'No source linked events found for the next seven days. Check back later or try another city in Settings.' : 'The live weekly list will appear when the scout is connected.'}</Text>}
+          <Text style={styles.weekFooter}>{weeklyLocalFeed?.checkedAt ? `List searched ${new Date(weeklyLocalFeed.checkedAt).toLocaleDateString()}. ` : ''}Events can change or sell out. Check each organizer’s page before going.</Text>
+        </View>
         {furtherRadiusKm > preferences.maxDistanceKm && <Pressable onPress={() => { if (homeLoading) return; const nextWide = !discoverWide; setDiscoverWide(nextWide); setShowMoreIdeas(nextWide); void runHomeScout(nextWide ? { ...preferences, maxDistanceKm: furtherRadiusKm } : preferences); }} disabled={homeLoading} style={[styles.lookFurther, discoverWide && styles.lookFurtherActive]} accessibilityRole="button" accessibilityState={{ disabled: homeLoading }}><View style={styles.lookFurtherCopy}><Text style={styles.lookFurtherTitle}>{discoverWide ? 'Back to nearby' : 'Look a little further'}</Text><Text style={styles.lookFurtherDetail}>{discoverWide ? `Wider Discover range: about ${formatDistance(furtherRadiusKm, preferences.distanceUnit)}. Your saved range is ${formatDistance(preferences.maxDistanceKm, preferences.distanceUnit)}.` : `Ask your scout to look about ${formatDistance(furtherRadiusKm, preferences.distanceUnit)} from ${preferences.place.split(',')[0].trim() || 'your city'}. Your saved range stays ${formatDistance(preferences.maxDistanceKm, preferences.distanceUnit)}.`}</Text></View><Text style={styles.lookFurtherArrow}>{discoverWide ? '↩' : '→'}</Text></Pressable>}
         <Pressable onPress={() => setSearchOpen(value => !value)} style={styles.searchToggle} accessibilityRole="button" accessibilityState={{ expanded: searchOpen }}><Text style={styles.searchToggleText}>⌕  Search and refine</Text><Text style={styles.searchChevron}>{searchOpen ? '−' : '+'}</Text></Pressable>
         {searchOpen && <View style={styles.searchPanel}>
@@ -1024,6 +1097,7 @@ const styles = StyleSheet.create({
   webIntro: { color: muted, fontSize: 14, lineHeight: 20, marginBottom: 14 }, webCard: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, padding: 18, marginBottom: 16 }, webKicker: { color: sea, fontSize: 10, fontWeight: '900', letterSpacing: 1.1, marginBottom: 9 }, webTitle: { color: ink, fontSize: 21, lineHeight: 26, fontWeight: '900', marginBottom: 8 }, webMeta: { color: ink, fontSize: 13, fontWeight: '800', marginBottom: 5 }, webVenue: { color: muted, fontSize: 12, marginBottom: 12 }, webReason: { color: sea, fontSize: 11, fontWeight: '800', marginBottom: 10 }, webSummary: { color: muted, fontSize: 13, lineHeight: 19 }, webSource: { color: sea, fontSize: 11, fontWeight: '700', marginTop: 14 }, webDisclaimer: { color: '#61767A', fontSize: 10, lineHeight: 15, marginTop: 8 },
   scoutStatus: { color: sea, fontSize: 11, fontWeight: '700', marginBottom: 12 }, deadlineText: { color: '#BB4A34', fontSize: 12, fontWeight: '800', marginBottom: 8 },
   importToggle: { backgroundColor: '#E6F7F3', borderWidth: 2, borderColor: '#103D46', borderRadius: 2, paddingHorizontal: 17, paddingVertical: 15, marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }, importPanel: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, padding: 17, marginBottom: 22 }, importHelp: { color: muted, fontSize: 12, lineHeight: 18, marginBottom: 15 }, reminderFeedback: { color: sea, fontSize: 12, lineHeight: 18, fontWeight: '700', marginBottom: 12 }, importInput: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C9DCDA', borderRadius: 2, paddingHorizontal: 13, paddingVertical: 11, color: ink, fontSize: 14, marginBottom: 13 }, importPreview: { width: '100%', height: 180, borderRadius: 2, marginBottom: 12, backgroundColor: '#E6F7F3' }, importCandidate: { borderWidth: 1, borderColor: '#C9DCDA', backgroundColor: '#F4FBF9', padding: 13, marginBottom: 9 }, importCandidateTitle: { color: ink, fontWeight: '800', fontSize: 14, marginBottom: 3 }, importDateRow: { flexDirection: 'row', gap: 8 }, importDateInput: { flex: 2 }, importTimeInput: { flex: 1 }, importedCard: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, padding: 17, marginBottom: 16 }, importedImage: { width: '100%', height: 145, marginBottom: 13, borderRadius: 2 }, importedReminder: { color: sea, fontSize: 12, fontWeight: '800', marginTop: 8 },
+  weekSection: { backgroundColor: '#F8F6F0', borderWidth: 2, borderColor: '#D6E2DB', borderRadius: 2, padding: 18, marginBottom: 20 }, weekKicker: { color: '#9D5C3E', fontSize: 10, fontWeight: '900', letterSpacing: 2.1, marginBottom: 10 }, weekTitle: { color: ink, fontSize: 29, lineHeight: 34, fontWeight: '900', letterSpacing: -0.8, marginBottom: 6 }, weekPlace: { color: muted, fontSize: 12, lineHeight: 18, marginBottom: 19 }, weekTopline: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', borderBottomWidth: 1, borderColor: '#CADBD3', paddingBottom: 12 }, weekRange: { color: ink, fontSize: 11, fontWeight: '900', letterSpacing: 1.8, textTransform: 'uppercase' }, weekCount: { color: muted, fontSize: 11 }, weekStatus: { color: '#9D5C3E', fontSize: 12, lineHeight: 18, marginTop: 13 }, weekDay: { borderBottomWidth: 1, borderColor: '#DCE5DE', paddingTop: 15 }, weekDayHeading: { flexDirection: 'row', alignItems: 'baseline', gap: 9, marginBottom: 4 }, weekDayName: { color: ink, fontSize: 19, fontWeight: '800' }, weekDayDate: { color: muted, fontSize: 11, fontWeight: '700' }, weekEvent: { minHeight: 61, flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 10, borderTopWidth: 1, borderColor: '#E7ECE6' }, weekIcon: { width: 33, height: 33, backgroundColor: '#DDECE5', alignItems: 'center', justifyContent: 'center', borderRadius: 2 }, weekIconText: { color: '#397560', fontSize: 19, fontWeight: '700' }, weekEventCopy: { flex: 1, minWidth: 0 }, weekEventTitle: { color: ink, fontSize: 14, fontWeight: '800', lineHeight: 19 }, weekEventMeta: { color: muted, fontSize: 11, marginTop: 3 }, weekArrow: { color: '#7B9D89', fontSize: 19, fontWeight: '700' }, weekEmpty: { color: muted, fontSize: 12, lineHeight: 18, paddingVertical: 20 }, weekFooter: { color: muted, fontSize: 10, lineHeight: 15, marginTop: 17 },
   lookFurther: { backgroundColor: '#E6F7F3', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, paddingHorizontal: 17, paddingVertical: 15, marginBottom: 20, flexDirection: 'row', alignItems: 'center', gap: 12 }, lookFurtherActive: { backgroundColor: '#DDF2EE' }, lookFurtherCopy: { flex: 1 }, lookFurtherTitle: { color: ink, fontSize: 16, fontWeight: '900', marginBottom: 4 }, lookFurtherDetail: { color: muted, fontSize: 12, lineHeight: 18 }, lookFurtherArrow: { color: sea, fontSize: 22, fontWeight: '800' },
   homeIntro: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 8, marginBottom: 6 }, homeIntroText: { flex: 1 }, homeTitle: { color: ink, fontSize: 28, lineHeight: 32, fontWeight: '800', letterSpacing: -0.8 }, homeLead: { color: muted, fontSize: 13, lineHeight: 19, marginBottom: 16 }, placeButton: { paddingVertical: 8, paddingHorizontal: 9, borderRadius: 18, backgroundColor: '#E4F7F3', marginBottom: 4 }, placeButtonText: { color: sea, fontSize: 11, fontWeight: '800' },
   settingsButton: { backgroundColor: '#E1F4F0', borderRadius: 18, paddingHorizontal: 11, paddingVertical: 9 }, settingsButtonText: { color: sea, fontSize: 12, fontWeight: '800' }, searchToggle: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, paddingHorizontal: 17, paddingVertical: 14, marginBottom: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, searchToggleText: { color: ink, fontSize: 15, fontWeight: '800' }, searchChevron: { color: sea, fontSize: 23, lineHeight: 25, fontWeight: '500' }, searchPanel: { marginBottom: 14 },

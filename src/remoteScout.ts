@@ -25,6 +25,8 @@ export type ScoutCitation = { startIndex: number; endIndex: number; url: string;
 export type WebIdea = { id: string; title: string; summary: string; reason: string; dateText: string; eventDate?: string; priceText: string; venue: string; address: string | null; place: string; sourceUrl: string; foundAt: string };
 export type WeeklyFeaturedAdventure = { id: string; title: string; summary: string; place: string; timing: string; price: string; sourceUrl: string; sourceName: string; imageUrl: string };
 export type WeeklyFeaturedResponse = { adventures: WeeklyFeaturedAdventure[]; checkedAt: string | null; expiresAt: string | null; refreshing?: boolean };
+export type WeeklyLocalEvent = { id: string; title: string; eventDate: string; eventTime: string; category: 'classes' | 'outdoors' | 'theatre' | 'music' | 'community' | 'arts' | 'food' | 'sports' | 'markets' | 'other'; place: string; sourceUrl: string; sourceName: string };
+export type WeeklyLocalResponse = { place: string; events: WeeklyLocalEvent[]; checkedAt: string | null; expiresAt: string | null; refreshing?: boolean };
 type ScoutResponse = { message: string; picks: Pick[]; followUp: string | null; mode: 'sample' | 'live' | 'web'; citations?: ScoutCitation[]; ideas?: WebIdea[] };
 
 export function pickToExperience(pick: Pick): Experience {
@@ -72,6 +74,15 @@ export async function getWeeklyFeaturedAdventures(): Promise<WeeklyFeaturedRespo
   if (!auth.currentUser) await signInAnonymously(auth);
   const call = httpsCallable<Record<string, never>, WeeklyFeaturedResponse>(getFunctions(app, 'northamerica-northeast2'), 'getWeeklyFeaturedAdventures');
   const result = await call({});
+  return result.data;
+}
+export async function getWeeklyLocalEvents(place: string): Promise<WeeklyLocalResponse> {
+  if (!remoteScoutConfigured) throw new Error('The live scout is not connected on this device.');
+  const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  if (!auth.currentUser) await signInAnonymously(auth);
+  const call = httpsCallable<{ place: string }, WeeklyLocalResponse>(getFunctions(app, 'northamerica-northeast2'), 'getWeeklyLocalEvents');
+  const result = await call({ place: place.trim() });
   return result.data;
 }
 export async function scanSharedFind(input: { imageBase64?: string; imageMime?: 'image/jpeg' | 'image/png'; sourceUrl?: string; place: string; lookupMode?: 'extract' | 'selected'; selectedFinds?: ExtractedFind[] }): Promise<SharedFindScan> {

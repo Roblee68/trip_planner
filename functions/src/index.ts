@@ -9,6 +9,7 @@ import { scoutWeb } from './webScout.js';
 import { parseImportScanInput, scanImportedFind } from './importScan.js';
 import { dailyOpportunityScan, saveDailyScout } from './dailyService.js';
 import { weeklyFeaturedAdventures } from './featuredAdventures.js';
+import { parseWeeklyLocalPlace, weeklyLocalEvents } from './weeklyLocalEvents.js';
 
 initializeApp();
 const openaiApiKey = defineSecret('OPENAI_API_KEY');
@@ -71,6 +72,20 @@ export const getWeeklyFeaturedAdventures = onCall({ region: 'northamerica-northe
   catch (error) {
     console.error('Weekly featured adventure refresh failed', error);
     throw new HttpsError('internal', 'Weekly adventures could not be refreshed. Please try again later.');
+  }
+});
+
+export const getWeeklyLocalEvents = onCall({ region: 'northamerica-northeast2', invoker: 'public', secrets: [openaiApiKey], timeoutSeconds: 120, memory: '512MiB', maxInstances: 1 }, async request => {
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in before viewing the weekly list.');
+  if (!openaiApiKey.value()) throw new HttpsError('failed-precondition', 'The weekly list is not configured yet.');
+  let place: string;
+  try { place = parseWeeklyLocalPlace(request.data?.place); }
+  catch (error) { throw new HttpsError('invalid-argument', error instanceof Error ? error.message : 'Choose a city and country.'); }
+  try { return await weeklyLocalEvents(place, request.auth.uid); }
+  catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error('Weekly local events refresh failed', error);
+    throw new HttpsError('internal', 'This week’s list could not be updated. Try again later.');
   }
 });
 
