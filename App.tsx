@@ -17,7 +17,7 @@ import { planReminders } from './src/reminders';
 import { listenForSourceTaps, phoneAlertsAllowed, requestPhoneAlerts, sendSampleAlert, syncImportedReminders, syncPhoneReminders } from './src/phoneAlerts';
 import { dailyScoutConfigured, getDailyPushToken, saveDailyScoutSubscription } from './src/dailyScout';
 import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/agent';
-import { askRemoteScout, getWeeklyFeaturedAdventures, getWeeklyLocalEvents, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse, type WeeklyLocalResponse, type WeeklyLocalEvent } from './src/remoteScout';
+import { askRemoteScout, currentScoutGuestId, getWeeklyFeaturedAdventures, getWeeklyLocalEvents, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse, type WeeklyLocalResponse, type WeeklyLocalEvent } from './src/remoteScout';
 import { findMentionsArea, localInputParts, mergeSelectedFinds, nextLocalMorning, orderFindsForArea, parseLocalDate, parseLocalDateTime, reminderSuggestion, safeSourceUrl, type ExtractedFind, type ImportedFind } from './src/importedFinds';
 import { addImportedFindToCalendar, keepImportedScreenshot, prepareImageForScan, removeImportedScreenshot } from './src/importActions';
 import { addDaysToDateKey, localDateKey, visibleWeeklyLocalEvents } from './src/weeklyLocal';
@@ -31,6 +31,7 @@ type StoredState = { preferences: Preferences; feedback: Feedback; savedIds: str
 const STORAGE_KEY = 'pbb-local-state-v1';
 const FEATURED_STORAGE_KEY = 'pbb-weekly-featured-v2';
 const WEEKLY_LOCAL_STORAGE_PREFIX = 'pbb-weekly-local-v1-';
+const PRIVACY_POLICY_URL = 'https://tripplanner-910da.web.app/privacy';
 const tabs: Tab[] = ['Discover', 'Now', 'Along the Way', 'Saved', 'Settings'];
 const nowFocuses: NowFocus[] = ['Anything', 'Outdoors', 'Creative', 'Food', 'Unexpected'];
 const routeFocuses: RouteFocus[] = ['Best stop', 'Views', 'Food', 'Culture', 'Unexpected'];
@@ -1102,6 +1103,8 @@ export default function App() {
         <Text style={styles.subheading}>Timely finds</Text>
         {alerts.length ? alerts.map(alert => <Pressable key={alert.item.id} onPress={() => setSelected(alert.item)} style={styles.alertCard}><Text style={styles.alertTag}>✦ {alert.reason}</Text><Text style={styles.alertTitle}>{alert.item.title}</Text><Text style={styles.cardMeta}>Starts {formatDate(alert.item.startsAt)} · {money(alert.item.totalCost, alert.item.currency)} · {formatDistance(alert.item.distanceKm, preferences.distanceUnit)}</Text><Text style={styles.alertLink}>See details →</Text></Pressable>) : <View style={styles.empty}><Text style={styles.emptyTitle}>No timely finds right now.</Text><Text style={styles.summary}>Enable alerts and choose interests to see matching sample opportunities.</Text></View>}
         <Text style={styles.notice}>Check each listing source and confirm details with the organizer before leaving. Events can fill, sell out, close due to weather, or change unexpectedly. AI can make mistakes. Opt-in phone reminders work for recently checked live listings already found by the app; new finds while the app is closed need a push service.</Text>
+        <Action label="Privacy policy ↗" onPress={() => { void Linking.openURL(PRIVACY_POLICY_URL); }} secondary />
+        {currentScoutGuestId() ? <Text style={styles.helper} selectable>Privacy request ID: {currentScoutGuestId()}. Include this ID if you email us about deleting service records.</Text> : null}
         <Action label="Clear passes and loves" onPress={() => setFeedback({})} secondary />
       </View>}
     </ScrollView>

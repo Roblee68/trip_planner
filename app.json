@@ -9,12 +9,14 @@
     "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/detours-app-icon-teal.png",
+      "buildNumber": "2",
       "supportsTablet": true,
       "bundleIdentifier": "com.roblee.pbandb",
       "deploymentTarget": "16.4"
     },
     "android": {
       "icon": "./assets/detours-app-icon-teal.png",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/detours-android-adaptive.png",
         "backgroundColor": "#18B8B0"

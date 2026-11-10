@@ -15,6 +15,10 @@ export const firebaseConfig = {
 export const remoteScoutConfigured = process.env.EXPO_PUBLIC_PBB_REMOTE_SCOUT === '1' && Object.values(firebaseConfig).every(Boolean);
 let guestSignIn: Promise<void> | null = null;
 
+export function currentScoutGuestId(): string | null {
+  return getApps().length ? getAuth(getApp()).currentUser?.uid ?? null : null;
+}
+
 export async function ensureScoutGuestAuth(auth: Auth): Promise<void> {
   if (auth.currentUser) return;
   if (!guestSignIn) guestSignIn = (async () => {
