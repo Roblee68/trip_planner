@@ -1,5 +1,5 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth, signInAnonymously, type Auth } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Category, Experience, Preferences } from './logic';
 import type { ExtractedFind } from './importedFinds';
@@ -13,6 +13,16 @@ export const firebaseConfig = {
 };
 
 export const remoteScoutConfigured = process.env.EXPO_PUBLIC_PBB_REMOTE_SCOUT === '1' && Object.values(firebaseConfig).every(Boolean);
+let guestSignIn: Promise<void> | null = null;
+
+export async function ensureScoutGuestAuth(auth: Auth): Promise<void> {
+  if (auth.currentUser) return;
+  if (!guestSignIn) guestSignIn = (async () => {
+    await auth.authStateReady();
+    if (!auth.currentUser) await signInAnonymously(auth);
+  })().finally(() => { guestSignIn = null; });
+  await guestSignIn;
+}
 const validCategories: Category[] = ['Dance', 'Outdoors', 'Arts', 'Food', 'Learning', 'Wellness'];
 
 type Pick = {
@@ -45,8 +55,8 @@ export async function askRemoteScout(prompt: string, preferences: Preferences, r
   if (!remoteScoutConfigured) throw new Error('The agent connection is not configured on this device.');
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  if (!auth.currentUser) await signInAnonymously(auth);
-  const call = httpsCallable(getFunctions(app, 'northamerica-northeast2'), 'suggestExperiences');
+  await ensureScoutGuestAuth(auth);
+  const call = httpsCallable(getFunctions(app, 'northamerica-northeast2'), 'suggestExperiences', { timeout: 110_000 });
   const localNow = new Date();
   const localDate = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
   const localTime = `${String(localNow.getHours()).padStart(2, '0')}:${String(localNow.getMinutes()).padStart(2, '0')}`;
@@ -71,7 +81,7 @@ export async function getWeeklyFeaturedAdventures(): Promise<WeeklyFeaturedRespo
   if (!remoteScoutConfigured) throw new Error('The live scout is not connected on this device.');
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  if (!auth.currentUser) await signInAnonymously(auth);
+  await ensureScoutGuestAuth(auth);
   const call = httpsCallable<Record<string, never>, WeeklyFeaturedResponse>(getFunctions(app, 'northamerica-northeast2'), 'getWeeklyFeaturedAdventures');
   const result = await call({});
   return result.data;
@@ -80,7 +90,7 @@ export async function getWeeklyLocalEvents(place: string): Promise<WeeklyLocalRe
   if (!remoteScoutConfigured) throw new Error('The live scout is not connected on this device.');
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  if (!auth.currentUser) await signInAnonymously(auth);
+  await ensureScoutGuestAuth(auth);
   const call = httpsCallable<{ place: string }, WeeklyLocalResponse>(getFunctions(app, 'northamerica-northeast2'), 'getWeeklyLocalEvents', { timeout: 120_000 });
   const result = await call({ place: place.trim() });
   return result.data;
@@ -89,7 +99,7 @@ export async function scanSharedFind(input: { imageBase64?: string; imageMime?: 
   if (!remoteScoutConfigured) throw new Error('The live scout is not connected on this device. You can enter the details yourself.');
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  if (!auth.currentUser) await signInAnonymously(auth);
+  await ensureScoutGuestAuth(auth);
   const call = httpsCallable<typeof input & { mode: 'import' }, SharedFindScan>(getFunctions(app, 'northamerica-northeast2'), 'suggestExperiences');
   const result = await call({ ...input, mode: 'import' });
   return { finds: Array.isArray(result.data?.finds) ? result.data.finds : [], webLookup: result.data?.webLookup ?? 'failed' };

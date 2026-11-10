@@ -21,6 +21,7 @@ import { askRemoteScout, getWeeklyFeaturedAdventures, getWeeklyLocalEvents, pick
 import { findMentionsArea, localInputParts, mergeSelectedFinds, nextLocalMorning, orderFindsForArea, parseLocalDate, parseLocalDateTime, reminderSuggestion, safeSourceUrl, type ExtractedFind, type ImportedFind } from './src/importedFinds';
 import { addImportedFindToCalendar, keepImportedScreenshot, prepareImageForScan, removeImportedScreenshot } from './src/importActions';
 import { addDaysToDateKey, localDateKey, visibleWeeklyLocalEvents } from './src/weeklyLocal';
+import { weeklyEventMatches, webIdeaMatches } from './src/discoverFilter';
 
 type Tab = 'Discover' | 'Now' | 'Along the Way' | 'Saved' | 'Settings';
 type NowFocus = 'Anything' | 'Outdoors' | 'Creative' | 'Food' | 'Unexpected';
@@ -291,6 +292,8 @@ export default function App() {
   const routeRequestId = useRef(0);
   const surpriseRequestId = useRef(0);
   const homeRequestId = useRef(0);
+  const homeScoutBusy = useRef(false);
+  const lastAutoScoutKey = useRef('');
   const savedRequestId = useRef(0);
 
   useEffect(() => {
@@ -403,27 +406,36 @@ export default function App() {
   const ranked = useMemo(() => rankExperiences(allItems, discoverPreferences, feedback, savedIds), [allItems, discoverPreferences, feedback, savedIds]);
   const alerts = useMemo(() => opportunityAlerts(allItems, preferences, feedback, savedIds), [allItems, preferences, feedback, savedIds]);
   useEffect(() => {
-    if (!hydrated || !remoteScoutConfigured || process.env.EXPO_PUBLIC_PBB_AUTO_SCOUT !== '1' || !preferences.place.includes(',') || !/^[A-Z]{3}$/.test(preferences.currency)) return;
+    if (!hydrated || tab !== 'Discover' || !remoteScoutConfigured || process.env.EXPO_PUBLIC_PBB_AUTO_SCOUT !== '1' || !preferences.place.includes(',') || !/^[A-Z]{3}$/.test(preferences.currency)) return;
+    const scoutKey = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes]);
+    if (lastAutoScoutKey.current === scoutKey) return;
     let cancelled = false;
-    const timer = setTimeout(async () => {
+    let timer: ReturnType<typeof setTimeout>;
+    const run = async () => {
+      if (cancelled || lastAutoScoutKey.current === scoutKey) return;
+      if (homeScoutBusy.current) { timer = setTimeout(run, 1000); return; }
+      homeScoutBusy.current = true;
+      const requestId = ++homeRequestId.current;
+      setHomeLoading(true);
       setAutoScoutStatus('Your scout is checking for ideas…');
       setHomeScoutMessage('');
       setHomeScoutCitations([]);
-      setHomeWebIdeas([]);
       try {
         const result = await askRemoteScout('Find experiences that match my saved interests and practical limits', preferences, 'balanced', undefined, undefined, false, likedExamples.map(value => value.title));
-        if (cancelled) return;
+        if (cancelled || requestId !== homeRequestId.current) return;
         setRemoteItems(result.picks.map(pickToExperience));
         setHomeWebIdeas((result.ideas ?? []).filter(idea => feedback[idea.id] !== 'pass'));
         setHomeScoutMessage(result.message);
         setHomeScoutCitations(result.citations ?? []);
+        lastAutoScoutKey.current = scoutKey;
         setAutoScoutStatus(result.mode === 'web' ? 'Your scout checked the public web.' : result.mode === 'live' ? 'Your scout checked source-linked ideas.' : 'Your scout found sample ideas.');
-      } catch {
-        if (!cancelled) setAutoScoutStatus('Live scout is unavailable right now.');
-      }
-    }, 900);
+      } catch (error) {
+        if (!cancelled && requestId === homeRequestId.current) setAutoScoutStatus(error instanceof Error ? `Live scout needs another try: ${error.message}` : 'Live scout needs another try.');
+      } finally { homeScoutBusy.current = false; if (requestId === homeRequestId.current) setHomeLoading(false); }
+    };
+    timer = setTimeout(run, 900);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [hydrated, preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests.join(','), preferences.topics.join(','), preferences.travelModes.join(',')]);
+  }, [hydrated, tab, preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests.join(','), preferences.topics.join(','), preferences.travelModes.join(',')]);
   useEffect(() => {
     if (!hydrated) return;
     let cancelled = false;
@@ -445,15 +457,19 @@ export default function App() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [hydrated, preferences.dailyScoutEnabled, preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests.join(','), preferences.topics.join(','), preferences.travelModes.join(',')]);
   const agentSuggestions = useMemo(() => remoteScoutConfigured ? remoteSuggestions.map(suggestion => ({ item: suggestion.item, reasons: [suggestion.reason] })) : activeRequest === null ? [] : recommendForIntent(localExamples, discoverPreferences, feedback, savedIds, interpretIntent(activeRequest), agentMode).slice(0, 3), [localExamples, discoverPreferences, feedback, savedIds, activeRequest, agentMode, remoteSuggestions]);
-  const visible = ranked.filter(item => (category === 'All' || item.category === category) && (!query || `${item.title} ${item.category} ${item.tags.join(' ')} ${item.location}`.toLowerCase().includes(query.toLowerCase())));
+  const activeCategory = searchOpen ? category : 'All';
+  const activeQuery = searchOpen ? query.trim() : '';
+  const visible = ranked.filter(item => (activeCategory === 'All' || item.category === activeCategory) && (!activeQuery || `${item.title} ${item.category} ${item.tags.join(' ')} ${item.location}`.toLocaleLowerCase().includes(activeQuery.toLocaleLowerCase())));
   const diverse = showDiverse ? [...visible].sort((a, b) => Number(preferences.interests.includes(a.category)) - Number(preferences.interests.includes(b.category))) : visible;
   const organicItems = diverse;
   const weeklyPicks: FeaturedDestination[] = weeklyFeatured?.adventures.map(adventure => ({ ...adventure, fallbackImage: require('./assets/weekly-adventure-fallback.jpg') })) ?? [];
   const visibleFeatured = weeklyPicks.length ? weeklyPicks : featuredDestinations;
   const weeklyToday = localDateKey();
   const weeklyEnd = addDaysToDateKey(weeklyToday, 6);
-  const weeklyVisible = visibleWeeklyLocalEvents(weeklyLocalFeed?.events ?? [], weeklyToday);
+  const weeklyAll = visibleWeeklyLocalEvents(weeklyLocalFeed?.events ?? [], weeklyToday);
+  const weeklyVisible = weeklyAll.filter(event => weeklyEventMatches(event, activeQuery, activeCategory));
   const weeklyDays = [...new Set(weeklyVisible.map(event => event.eventDate))];
+  const visibleHomeWebIdeas = homeWebIdeas.filter(idea => webIdeaMatches(idea, activeQuery, activeCategory));
   const homeOrganicItems = showMoreIdeas || searchOpen || category !== 'All' || !!query.trim() ? organicItems : organicItems.slice(0, 3);
   const drawSerendipity = async () => {
     if (serendipityLoading) return;
@@ -751,13 +767,14 @@ export default function App() {
     } finally { setScoutLoading(false); }
   };
   const runHomeScout = async (searchPreferences: Preferences = discoverPreferences) => {
-    if (homeLoading) return;
+    if (homeScoutBusy.current) return;
+    homeScoutBusy.current = true;
     const requestId = ++homeRequestId.current;
     setHomeLoading(true);
+    setAutoScoutStatus('Your scout is checking for ideas…');
     setHomeScoutMessage('');
     setHomeScoutCitations([]);
-    setHomeWebIdeas([]);
-    if (!remoteScoutConfigured) { setHomeScoutMessage('Live discovery is not connected in this preview. Explore the sample ideas below.'); setHomeLoading(false); return; }
+    if (!remoteScoutConfigured) { setHomeScoutMessage('Live discovery is not connected in this preview. Explore the sample ideas below.'); setHomeLoading(false); homeScoutBusy.current = false; return; }
     try {
       const farther = searchPreferences.maxDistanceKm > preferences.maxDistanceKm;
       const prompt = farther ? 'Look a little further for current activities in nearby towns and areas within my wider travel radius. Match my saved interests and budget. Prioritize specific source-linked options I can plan soon.' : 'Find current activities that match my saved interests, budget and travel preferences. Prioritize specific source-linked options I can plan soon.';
@@ -766,9 +783,11 @@ export default function App() {
       setHomeWebIdeas((result.ideas ?? []).filter(idea => feedback[idea.id] !== 'pass'));
       setHomeScoutMessage(result.message);
       setHomeScoutCitations(result.citations ?? []);
+      setAutoScoutStatus(result.mode === 'web' ? 'Your scout checked the public web.' : result.mode === 'live' ? 'Your scout checked source-linked ideas.' : 'Your scout found sample ideas.');
+      if (!farther) lastAutoScoutKey.current = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes]);
     } catch (error) {
-      if (requestId === homeRequestId.current) setHomeScoutMessage(error instanceof Error ? `The scout is unavailable: ${error.message}` : 'The scout is unavailable. Please try again.');
-    } finally { if (requestId === homeRequestId.current) setHomeLoading(false); }
+      if (requestId === homeRequestId.current) { setHomeScoutMessage(error instanceof Error ? `The scout is unavailable: ${error.message}` : 'The scout is unavailable. Please try again.'); setAutoScoutStatus('Live scout needs another try.'); }
+    } finally { homeScoutBusy.current = false; if (requestId === homeRequestId.current) setHomeLoading(false); }
   };
   const runNowScout = async (hours: number) => {
     const requestId = ++nowRequestId.current;
@@ -910,12 +929,19 @@ export default function App() {
         <Action label={homeLoading ? 'Scouting for you…' : 'Find ideas for me'} onPress={() => { void runHomeScout(); }} />
         {homeLoading && <Text style={styles.notice}>Checking public sources near {preferences.place}…</Text>}
         {autoScoutStatus ? <Text style={styles.scoutStatus}>✦  {autoScoutStatus}</Text> : null}
-        {homeWebIdeas.length ? <Text style={styles.webIntro}>{homeScoutMessage}</Text> : homeScoutCitations.length ? <CitedScoutText message={homeScoutMessage} citations={homeScoutCitations} /> : homeScoutMessage ? <Text style={styles.notice}>{homeScoutMessage}</Text> : null}
+        {homeWebIdeas.length ? <Text style={styles.webIntro}>{searchOpen && (activeQuery || activeCategory !== 'All') ? `Your scout found ${homeWebIdeas.length} ideas. ${visibleHomeWebIdeas.length} match these filters.` : homeScoutMessage}</Text> : homeScoutCitations.length ? <CitedScoutText message={homeScoutMessage} citations={homeScoutCitations} /> : homeScoutMessage ? <Text style={styles.notice}>{homeScoutMessage}</Text> : null}
+        <Pressable onPress={() => { if (searchOpen) { setQuery(''); setCategory('All'); } setSearchOpen(value => !value); }} style={styles.searchToggle} accessibilityRole="button" accessibilityState={{ expanded: searchOpen }}><Text style={styles.searchToggleText}>⌕  Search and refine</Text><Text style={styles.searchChevron}>{searchOpen ? '−' : '+'}</Text></Pressable>
+        {searchOpen && <View style={styles.searchPanel}>
+          <TextInput value={query} onChangeText={setQuery} placeholder="Filter events and ideas: dance, pottery…" placeholderTextColor="#6C8285" style={styles.search} returnKeyType="done" />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}><Pill label="All" active={category === 'All'} onPress={() => setCategory('All')} />{categories.map(value => <Pill key={value} label={value} active={category === value} onPress={() => setCategory(value)} />)}</ScrollView>
+          <View style={styles.rowBetween}><Text style={styles.helper}>{weeklyVisible.length} of {weeklyAll.length} weekly events · {visibleHomeWebIdeas.length} scout ideas</Text><Pressable onPress={() => { setQuery(''); setCategory('All'); }}><Text style={styles.clearText}>Clear</Text></Pressable></View>
+          <Text style={styles.helper}>These filters narrow the ideas below. “Find ideas for me” asks the scout to search for new ones.</Text>
+        </View>}
         <View style={styles.weekSection}>
           <Text style={styles.weekKicker}>NEAR YOU, SOON</Text>
           <Text style={styles.weekTitle}>What’s on this week.</Text>
           <Text style={styles.weekPlace}>A browseable list for {preferences.place}. Open a source to check the details.</Text>
-          <View style={styles.weekTopline}><Text style={styles.weekRange}>{formatWeekDate(weeklyToday, { month: 'short', day: 'numeric' })} – {formatWeekDate(weeklyEnd, { month: 'short', day: 'numeric' })}</Text><Text style={styles.weekCount}>{weeklyVisible.length} {weeklyVisible.length === 1 ? 'event' : 'events'}</Text></View>
+          <View style={styles.weekTopline}><Text style={styles.weekRange}>{formatWeekDate(weeklyToday, { month: 'short', day: 'numeric' })} – {formatWeekDate(weeklyEnd, { month: 'short', day: 'numeric' })}</Text><Text style={styles.weekCount}>{searchOpen && (activeQuery || activeCategory !== 'All') ? `${weeklyVisible.length} of ${weeklyAll.length}` : `${weeklyVisible.length} ${weeklyVisible.length === 1 ? 'event' : 'events'}`}</Text></View>
           {weeklyLocalLoading && <Text style={styles.weekStatus}>Gathering the shared area list…</Text>}
           {weeklyLocalMessage && <Text style={styles.weekStatus}>{weeklyLocalMessage}</Text>}
           {weeklyDays.map(date => <View key={date} style={styles.weekDay}>
@@ -926,15 +952,12 @@ export default function App() {
               <Text style={styles.weekArrow}>↗</Text>
             </Pressable>)}
           </View>)}
-          {!weeklyDays.length && !weeklyLocalLoading && <Text style={styles.weekEmpty}>{remoteScoutConfigured ? 'No source linked events found for the next seven days. Check back later or try another city in Settings.' : 'The live weekly list will appear when the scout is connected.'}</Text>}
+          {!weeklyDays.length && !weeklyLocalLoading && <Text style={styles.weekEmpty}>{searchOpen && (activeQuery || activeCategory !== 'All') ? 'No weekly events match these filters. Clear them to see the full list.' : remoteScoutConfigured ? 'No source linked events found for the next seven days. Check back later or try another city in Settings.' : 'The live weekly list will appear when the scout is connected.'}</Text>}
           <Text style={styles.weekFooter}>{weeklyLocalFeed?.checkedAt ? `List searched ${new Date(weeklyLocalFeed.checkedAt).toLocaleDateString()}. ` : ''}Events can change or sell out. Check each organizer’s page before going.</Text>
         </View>
-        {homeWebIdeas.map(idea => webIdeaCard(idea))}
+        {visibleHomeWebIdeas.map(idea => webIdeaCard(idea))}
         {furtherRadiusKm > preferences.maxDistanceKm && <Pressable onPress={() => { if (homeLoading) return; const nextWide = !discoverWide; setDiscoverWide(nextWide); setShowMoreIdeas(nextWide); void runHomeScout(nextWide ? { ...preferences, maxDistanceKm: furtherRadiusKm } : preferences); }} disabled={homeLoading} style={[styles.lookFurther, discoverWide && styles.lookFurtherActive]} accessibilityRole="button" accessibilityState={{ disabled: homeLoading }}><View style={styles.lookFurtherCopy}><Text style={styles.lookFurtherTitle}>{discoverWide ? 'Back to nearby' : 'Look a little further'}</Text><Text style={styles.lookFurtherDetail}>{discoverWide ? `Wider Discover range: about ${formatDistance(furtherRadiusKm, preferences.distanceUnit)}. Your saved range is ${formatDistance(preferences.maxDistanceKm, preferences.distanceUnit)}.` : `Ask your scout to look about ${formatDistance(furtherRadiusKm, preferences.distanceUnit)} from ${preferences.place.split(',')[0].trim() || 'your city'}. Your saved range stays ${formatDistance(preferences.maxDistanceKm, preferences.distanceUnit)}.`}</Text></View><Text style={styles.lookFurtherArrow}>{discoverWide ? '↩' : '→'}</Text></Pressable>}
-        <Pressable onPress={() => setSearchOpen(value => !value)} style={styles.searchToggle} accessibilityRole="button" accessibilityState={{ expanded: searchOpen }}><Text style={styles.searchToggleText}>⌕  Search and refine</Text><Text style={styles.searchChevron}>{searchOpen ? '−' : '+'}</Text></Pressable>
         {searchOpen && <View style={styles.searchPanel}>
-          <TextInput value={query} onChangeText={setQuery} placeholder="Search ideas: dance, pottery, outdoors…" placeholderTextColor="#6C8285" style={styles.search} returnKeyType="search" />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}><Pill label="All" active={category === 'All'} onPress={() => setCategory('All')} />{categories.map(value => <Pill key={value} label={value} active={category === value} onPress={() => setCategory(value)} />)}</ScrollView>
           <View style={styles.agentPanel}><Text style={styles.agentKicker}>✦ YOUR PERSONAL SCOUT</Text><Text style={styles.agentTitle}>What are you up for?</Text><Text style={styles.agentLead}>{remoteScoutConfigured ? 'Try a free hour, a new skill, or a little adventure.' : 'Preview mode: this searches sample ideas. Live AI is not connected yet.'}</Text>
             <TextInput value={agentPrompt} onChangeText={setAgentPrompt} onSubmitEditing={() => runScout(agentPrompt)} placeholder="Try “free dance class this weekend”" placeholderTextColor="#68868B" style={styles.agentInput} returnKeyType="search" />
             <Action label="Find ideas" onPress={() => runScout(agentPrompt)} />

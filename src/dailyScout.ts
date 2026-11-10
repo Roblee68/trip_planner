@@ -1,9 +1,9 @@
 import * as Notifications from 'expo-notifications';
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Preferences } from './logic';
-import { firebaseConfig } from './remoteScout';
+import { ensureScoutGuestAuth, firebaseConfig } from './remoteScout';
 
 const projectId = process.env.EXPO_PUBLIC_EXPO_PROJECT_ID;
 export const dailyScoutConfigured = process.env.EXPO_PUBLIC_PBB_DAILY_SCOUT === '1' && !!projectId && Object.values(firebaseConfig).every(Boolean);
@@ -11,7 +11,7 @@ export const dailyScoutConfigured = process.env.EXPO_PUBLIC_PBB_DAILY_SCOUT === 
 async function signedInApp() {
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  if (!auth.currentUser) await signInAnonymously(auth);
+  await ensureScoutGuestAuth(auth);
   return app;
 }
 
