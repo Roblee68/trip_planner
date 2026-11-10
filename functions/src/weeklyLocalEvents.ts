@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import { getFirestore } from 'firebase-admin/firestore';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { searchedUrls } from './webDaily.js';
+import { sourcePreviewImageUrl } from './sourceImage.js';
 
 const DAY = 86_400_000;
 const WEEK = 7 * DAY;
@@ -12,7 +13,7 @@ type Category = typeof categories[number];
 
 export type WeeklyLocalEvent = {
   id: string; title: string; eventDate: string; eventTime: string; category: Category;
-  place: string; sourceUrl: string; sourceName: string;
+  place: string; sourceUrl: string; sourceName: string; imageUrl?: string;
 };
 export type WeeklyLocalFeed = {
   place: string; events: WeeklyLocalEvent[]; checkedAt: string | null; expiresAt: string | null; refreshing?: boolean;
@@ -86,10 +87,23 @@ export function eligibleWeeklyLocalEvents(raw: unknown, searched: Set<string>, p
     if (seen.has(identity)) continue;
     seen.add(identity);
     output.push({ id: `week-${createHash('sha256').update(identity).digest('hex').slice(0, 20)}`, title, eventDate, eventTime,
-      category, place: eventPlace, sourceUrl, sourceName: new URL(sourceUrl).hostname.replace(/^www\./, '') });
+      category, place: eventPlace, sourceUrl, sourceName: new URL(sourceUrl).hostname.replace(/^www\./, ''), imageUrl: '' });
     if (output.length === 24) break;
   }
   return output.sort((a, b) => a.eventDate.localeCompare(b.eventDate) || (a.eventTime || '99:99').localeCompare(b.eventTime || '99:99') || a.title.localeCompare(b.title));
+}
+
+async function addSourceImages(events: WeeklyLocalEvent[]): Promise<WeeklyLocalEvent[]> {
+  const urls = [...new Set(events.map(event => event.sourceUrl))];
+  const images = new Map<string, string>();
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(6, urls.length) }, async () => {
+    while (next < urls.length) {
+      const url = urls[next++];
+      images.set(url, await sourcePreviewImageUrl(url));
+    }
+  }));
+  return events.map(event => ({ ...event, imageUrl: images.get(event.sourceUrl) ?? '' }));
 }
 
 async function searchWeeklyLocalEvents(place: string, now: Date): Promise<WeeklyLocalEvent[]> {
@@ -119,7 +133,14 @@ export async function weeklyLocalEvents(place: string, uid: string, now = new Da
       events: Array.isArray(data.events) ? data.events as WeeklyLocalEvent[] : [],
       checkedAt: typeof data.checkedAt === 'string' ? data.checkedAt : null,
       expiresAt: typeof data.expiresAt === 'string' ? data.expiresAt : null };
-    if (cached.expiresAt && Date.parse(cached.expiresAt) > now.getTime()) return { kind: 'cached' as const, cached };
+    if (cached.expiresAt && Date.parse(cached.expiresAt) > now.getTime()) {
+      if (cached.events.length && !data.imageCheckedAt) {
+        if (typeof data.refreshingImagesUntil === 'string' && Date.parse(data.refreshingImagesUntil) > now.getTime()) return { kind: 'images-waiting' as const, cached };
+        transaction.set(ref, { refreshingImagesUntil: new Date(now.getTime() + 2 * 60_000).toISOString() }, { merge: true });
+        return { kind: 'images' as const, cached };
+      }
+      return { kind: 'cached' as const, cached };
+    }
     if (typeof data.refreshingUntil === 'string' && Date.parse(data.refreshingUntil) > now.getTime()) return { kind: 'waiting' as const, cached };
     if (typeof data.retryAfter === 'string' && Date.parse(data.retryAfter) > now.getTime()) return { kind: 'cached' as const, cached };
     const userCount = Number(userUsage.data()?.count ?? 0);
@@ -132,10 +153,16 @@ export async function weeklyLocalEvents(place: string, uid: string, now = new Da
   });
   if (claim.kind === 'cached') return claim.cached;
   if (claim.kind === 'waiting') return { ...claim.cached, refreshing: true };
+  if (claim.kind === 'images-waiting') return { ...claim.cached, refreshing: true };
+  if (claim.kind === 'images') {
+    const events = await addSourceImages(claim.cached.events);
+    await ref.set({ events, imageCheckedAt: now.toISOString(), refreshingImagesUntil: null }, { merge: true });
+    return { ...claim.cached, events };
+  }
   try {
-    const events = await searchWeeklyLocalEvents(place, now);
+    const events = await addSourceImages(await searchWeeklyLocalEvents(place, now));
     const result: WeeklyLocalFeed = { place, events, checkedAt: now.toISOString(), expiresAt: new Date(now.getTime() + WEEK).toISOString() };
-    await ref.set({ ...result, refreshingUntil: null, retryAfter: null });
+    await ref.set({ ...result, imageCheckedAt: now.toISOString(), refreshingImagesUntil: null, refreshingUntil: null, retryAfter: null });
     return result;
   } catch (error) {
     await ref.set({ refreshingUntil: null, retryAfter: new Date(now.getTime() + RETRY).toISOString() }, { merge: true });
