@@ -21,13 +21,15 @@ import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/a
 import { askRemoteScout, currentScoutGuestId, ensureScoutGuestAuth, firebaseConfig, getScoutAuth, getWeeklyFeaturedAdventures, getWeeklyLocalEvents, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse, type WeeklyLocalResponse, type WeeklyLocalEvent } from './src/remoteScout';
 import { AccountScreen } from './src/AccountScreen';
 import { SettingsIcon } from './src/SettingsIcon';
+import { ArrowIcon, CalendarIcon } from './src/ArrowIcon';
 import { localStateKey, mergeGuestLocalState } from './src/account';
 import { findMentionsArea, localInputParts, mergeSelectedFinds, nextLocalMorning, orderFindsForArea, parseLocalDate, parseLocalDateTime, reminderSuggestion, safeSourceUrl, type ExtractedFind, type ImportedFind } from './src/importedFinds';
 import { addImportedFindToCalendar, keepImportedScreenshot, prepareImageForScan, removeImportedScreenshot } from './src/importActions';
 import { addDaysToDateKey, localDateKey, visibleWeeklyLocalEvents } from './src/weeklyLocal';
-import { weeklyEventMatches, webIdeaMatches } from './src/discoverFilter';
+import { weeklyEventMatches, webIdeaMatches, weekInterestMatches, type WeekInterest } from './src/discoverFilter';
 
-type Tab = 'Discover' | 'Now' | 'Along the Way' | 'Saved' | 'Settings';
+type Tab = 'Discover' | 'This Week' | 'Now' | 'Along the Way' | 'Saved' | 'Settings';
+type DiscoverMode = 'for-you' | 'search' | 'further' | 'serendipity';
 type NowFocus = 'Anything' | 'Outdoors' | 'Creative' | 'Food' | 'Unexpected';
 type RouteFocus = 'Best stop' | 'Views' | 'Food' | 'Culture' | 'Unexpected';
 type LikedExample = { id: string; title: string };
@@ -36,7 +38,8 @@ const STORAGE_KEY = 'pbb-local-state-v1';
 const FEATURED_STORAGE_KEY = 'pbb-weekly-featured-v2';
 const WEEKLY_LOCAL_STORAGE_PREFIX = 'pbb-weekly-local-v1-';
 const PRIVACY_POLICY_URL = 'https://tripplanner-910da.web.app/privacy';
-const tabs: Tab[] = ['Discover', 'Now', 'Along the Way', 'Saved', 'Settings'];
+const tabs: Tab[] = ['Discover', 'This Week', 'Now', 'Along the Way', 'Saved', 'Settings'];
+const weekInterests: WeekInterest[] = ['All', 'Dance', 'Classes', 'Markets', 'Music', 'Theatre', 'Arts', 'Outdoors', 'Food', 'Sports', 'Community'];
 const nowFocuses: NowFocus[] = ['Anything', 'Outdoors', 'Creative', 'Food', 'Unexpected'];
 const routeFocuses: RouteFocus[] = ['Best stop', 'Views', 'Food', 'Culture', 'Unexpected'];
 const ink = '#103D46';
@@ -243,6 +246,10 @@ export default function App() {
 
 function AppContent({ accountUid }: { accountUid: string }) {
   const [tab, setTab] = useState<Tab>('Discover');
+  const [discoverMode, setDiscoverMode] = useState<DiscoverMode>('for-you');
+  const [weekInterest, setWeekInterest] = useState<WeekInterest>('All');
+  const [weekDay, setWeekDay] = useState('All');
+  const [weekQuery, setWeekQuery] = useState('');
   const [accountOpen, setAccountOpen] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
   const [feedback, setFeedback] = useState<Feedback>({});
@@ -281,7 +288,6 @@ function AppContent({ accountUid }: { accountUid: string }) {
   const [catalogLoading, setCatalogLoading] = useState(remoteScoutConfigured);
   const [selected, setSelected] = useState<Experience | null>(null);
   const [query, setQuery] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
   const [showMoreIdeas, setShowMoreIdeas] = useState(false);
   const [discoverWide, setDiscoverWide] = useState(false);
   const [topicsOpen, setTopicsOpen] = useState(false);
@@ -291,7 +297,6 @@ function AppContent({ accountUid }: { accountUid: string }) {
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [currencyQuery, setCurrencyQuery] = useState('');
   const [suggestedCurrency, setSuggestedCurrency] = useState<string | undefined>();
-  const [serendipityOpen, setSerendipityOpen] = useState(false);
   const [travelMode, setTravelMode] = useState<TravelMode>('walk');
   const [serendipityPick, setSerendipityPick] = useState<Experience | null>(null);
   const [serendipityWebPick, setSerendipityWebPick] = useState<WebIdea | null>(null);
@@ -331,6 +336,10 @@ function AppContent({ accountUid }: { accountUid: string }) {
   const [homeScoutMessage, setHomeScoutMessage] = useState('');
   const [homeScoutCitations, setHomeScoutCitations] = useState<ScoutCitation[]>([]);
   const [homeLoading, setHomeLoading] = useState(false);
+  const [wideWebIdeas, setWideWebIdeas] = useState<WebIdea[]>([]);
+  const [wideScoutMessage, setWideScoutMessage] = useState('');
+  const [wideLoading, setWideLoading] = useState(false);
+  const [wideSearchKey, setWideSearchKey] = useState('');
   const [savedScoutIdeas, setSavedScoutIdeas] = useState<WebIdea[]>([]);
   const [savedScoutMessage, setSavedScoutMessage] = useState('');
   const [savedScoutLoading, setSavedScoutLoading] = useState(false);
@@ -346,6 +355,8 @@ function AppContent({ accountUid }: { accountUid: string }) {
   const routeRequestId = useRef(0);
   const surpriseRequestId = useRef(0);
   const homeRequestId = useRef(0);
+  const scoutRequestId = useRef(0);
+  const wideRequestId = useRef(0);
   const homeScoutBusy = useRef(false);
   const lastAutoScoutKey = useRef('');
   const savedRequestId = useRef(0);
@@ -403,7 +414,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
     return () => { cancelled = true; if (retryTimer) clearTimeout(retryTimer); };
   }, [hydrated]);
   useEffect(() => {
-    if (!hydrated || tab !== 'Discover') return;
+    if (!hydrated) return;
     const place = preferences.place.trim();
     setWeeklyLocalFeed(null);
     setWeeklyLocalLoading(false);
@@ -437,7 +448,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
     };
     void load();
     return () => { cancelled = true; if (retryTimer) clearTimeout(retryTimer); };
-  }, [hydrated, preferences.place, tab]);
+  }, [hydrated, preferences.place]);
   useEffect(() => { if (hydrated) syncImportedReminders(importedFinds).catch(() => setImportMessage('A saved reminder could not be scheduled on this phone.')); }, [hydrated, importedFinds]);
   useEffect(() => {
     if (tab !== 'Settings') return;
@@ -451,13 +462,23 @@ function AppContent({ accountUid }: { accountUid: string }) {
   useEffect(() => {
     catalog.load().then(result => setExperiences(result.items)).catch(() => setExperiences([])).finally(() => setCatalogLoading(false));
   }, []);
-  useEffect(() => { nowRequestId.current += 1; routeRequestId.current += 1; surpriseRequestId.current += 1; homeRequestId.current += 1; savedRequestId.current += 1; setRemoteSuggestions([]); setRemoteItems([]); setHomeWebIdeas([]); setSearchWebIdeas([]); setNowIdeas([]); setNowMessage(''); setNowLoading(false); setNowSearched(false); setRouteIdeas([]); setRouteMessage(''); setRouteLoading(false); setRouteSearched(false); setHomeScoutMessage(''); setHomeScoutCitations([]); setHomeLoading(false); setSavedScoutIdeas([]); setSavedScoutMessage(''); setSavedScoutLoading(false); setSavedScoutSeed(''); setActiveRequest(null); setDiscoverWide(false); setSerendipityPick(null); setSerendipityWebPick(null); setSerendipityMessage(''); setSerendipityLoading(false); setSerendipityTried(false); }, [preferences.place, preferences.currency]);
+  useEffect(() => { nowRequestId.current += 1; routeRequestId.current += 1; surpriseRequestId.current += 1; homeRequestId.current += 1; scoutRequestId.current += 1; wideRequestId.current += 1; savedRequestId.current += 1; setRemoteSuggestions([]); setRemoteItems([]); setHomeWebIdeas([]); setSearchWebIdeas([]); setNowIdeas([]); setNowMessage(''); setNowLoading(false); setNowSearched(false); setRouteIdeas([]); setRouteMessage(''); setRouteLoading(false); setRouteSearched(false); setHomeScoutMessage(''); setHomeScoutCitations([]); setHomeLoading(false); setWideWebIdeas([]); setWideScoutMessage(''); setWideLoading(false); setWideSearchKey(''); setSavedScoutIdeas([]); setSavedScoutMessage(''); setSavedScoutLoading(false); setSavedScoutSeed(''); setActiveRequest(null); setDiscoverWide(false); setSerendipityPick(null); setSerendipityWebPick(null); setSerendipityMessage(''); setSerendipityLoading(false); setSerendipityTried(false); }, [preferences.place, preferences.currency]);
   useEffect(() => { if (!(preferences.travelModes ?? []).includes(travelMode) || travelMode === 'plane') setTravelMode((preferences.travelModes ?? []).find(mode => mode !== 'plane') ?? 'walk'); }, [preferences.travelModes, travelMode]);
 
   const furtherRadiusKm = Math.min(500, preferences.maxDistanceKm + toKilometres(25, preferences.distanceUnit));
   const discoverPreferences = useMemo(() => discoverWide ? { ...preferences, maxDistanceKm: furtherRadiusKm } : preferences, [discoverWide, preferences, furtherRadiusKm]);
+  const widerSearchKey = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes]);
+  useEffect(() => {
+    wideRequestId.current += 1;
+    setWideWebIdeas([]);
+    setWideScoutMessage('');
+    setWideLoading(false);
+    setWideSearchKey('');
+    setDiscoverWide(false);
+    setDiscoverMode('for-you');
+  }, [widerSearchKey]);
   const showingTorontoSamples = (/^(toronto)(?:\b|,)/i.test(preferences.place.trim()) || /^ontario(?:,?\s*canada)?$/i.test(preferences.place.trim())) && preferences.currency === 'CAD';
-  const localExamples = useMemo(() => showingTorontoSamples ? experiences : [], [experiences, showingTorontoSamples]);
+  const localExamples = useMemo(() => showingTorontoSamples && !remoteScoutConfigured ? experiences : [], [experiences, showingTorontoSamples]);
   const allItems = useMemo(() => [...remoteItems, ...localExamples.filter(item => !remoteItems.some(remote => remote.id === item.id))], [remoteItems, localExamples]);
   const savedVisible = useMemo(() => {
     const byId = new Map([...savedItems, ...allItems].map(item => [item.id, item]));
@@ -466,7 +487,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
   const ranked = useMemo(() => rankExperiences(allItems, discoverPreferences, feedback, savedIds), [allItems, discoverPreferences, feedback, savedIds]);
   const alerts = useMemo(() => opportunityAlerts(allItems, preferences, feedback, savedIds), [allItems, preferences, feedback, savedIds]);
   useEffect(() => {
-    if (!hydrated || tab !== 'Discover' || !remoteScoutConfigured || process.env.EXPO_PUBLIC_PBB_AUTO_SCOUT !== '1' || !preferences.place.includes(',') || !/^[A-Z]{3}$/.test(preferences.currency)) return;
+    if (!hydrated || !remoteScoutConfigured || !preferences.place.includes(',') || !/^[A-Z]{3}$/.test(preferences.currency)) return;
     const scoutKey = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes]);
     if (lastAutoScoutKey.current === scoutKey) return;
     let cancelled = false;
@@ -481,7 +502,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
       setHomeScoutMessage('');
       setHomeScoutCitations([]);
       try {
-        const result = await askRemoteScout('Find experiences that match my saved interests and practical limits', preferences, 'balanced', undefined, undefined, false, likedExamples.map(value => value.title));
+        const result = await askRemoteScout('Find experiences that match my saved interests and practical limits', preferences, 'balanced', undefined, undefined, false, likedExamples.map(value => value.title), true);
         if (cancelled || requestId !== homeRequestId.current) return;
         setRemoteItems(result.picks.map(pickToExperience));
         setHomeWebIdeas((result.ideas ?? []).filter(idea => feedback[idea.id] !== 'pass'));
@@ -495,7 +516,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
     };
     timer = setTimeout(run, 900);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [hydrated, tab, preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests.join(','), preferences.topics.join(','), preferences.travelModes.join(',')]);
+  }, [hydrated, preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests.join(','), preferences.topics.join(','), preferences.travelModes.join(',')]);
   useEffect(() => {
     if (!hydrated) return;
     let cancelled = false;
@@ -517,6 +538,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [hydrated, preferences.dailyScoutEnabled, preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests.join(','), preferences.topics.join(','), preferences.travelModes.join(',')]);
   const agentSuggestions = useMemo(() => remoteScoutConfigured ? remoteSuggestions.map(suggestion => ({ item: suggestion.item, reasons: [suggestion.reason] })) : activeRequest === null ? [] : recommendForIntent(localExamples, discoverPreferences, feedback, savedIds, interpretIntent(activeRequest), agentMode).slice(0, 3), [localExamples, discoverPreferences, feedback, savedIds, activeRequest, agentMode, remoteSuggestions]);
+  const searchOpen = discoverMode === 'search';
   const activeCategory = searchOpen ? category : 'All';
   const activeQuery = searchOpen ? query.trim() : '';
   const visible = ranked.filter(item => (activeCategory === 'All' || item.category === activeCategory) && (!activeQuery || `${item.title} ${item.category} ${item.tags.join(' ')} ${item.location}`.toLocaleLowerCase().includes(activeQuery.toLocaleLowerCase())));
@@ -527,9 +549,12 @@ function AppContent({ accountUid }: { accountUid: string }) {
   const weeklyToday = localDateKey();
   const weeklyEnd = addDaysToDateKey(weeklyToday, 6);
   const weeklyAll = visibleWeeklyLocalEvents(weeklyLocalFeed?.events ?? [], weeklyToday);
-  const weeklyVisible = weeklyAll.filter(event => weeklyEventMatches(event, activeQuery, activeCategory));
+  const weekDates = Array.from({ length: 7 }, (_, index) => addDaysToDateKey(weeklyToday, index));
+  const weeklyVisible = weeklyAll.filter(event => weeklyEventMatches(event, weekQuery, 'All') && weekInterestMatches(event, weekInterest) && (weekDay === 'All' || event.eventDate === weekDay));
   const weeklyDays = [...new Set(weeklyVisible.map(event => event.eventDate))];
   const visibleHomeWebIdeas = homeWebIdeas.filter(idea => webIdeaMatches(idea, activeQuery, activeCategory));
+  const visibleSearchWebIdeas = searchWebIdeas.filter(idea => webIdeaMatches(idea, activeQuery, activeCategory));
+  const visibleWideWebIdeas = wideWebIdeas.filter(idea => webIdeaMatches(idea, activeQuery, activeCategory));
   const homeOrganicItems = showMoreIdeas || searchOpen || category !== 'All' || !!query.trim() ? organicItems : organicItems.slice(0, 3);
   const drawSerendipity = async () => {
     if (serendipityLoading) return;
@@ -805,6 +830,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
     setPreferences(current => ({ ...current, maxDistanceKm: Math.max(0, Math.min(500, toKilometres(Number.isFinite(number) ? number : 0, current.distanceUnit))) }));
   };
   const runScout = async (prompt: string, refinement: DiscoveryMode = 'balanced') => {
+    const requestId = ++scoutRequestId.current;
     setActiveRequest(prompt);
     setAgentMode(refinement);
     setScoutMessage('');
@@ -815,6 +841,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
     setScoutLoading(true);
     try {
       const result = await askRemoteScout(prompt, discoverPreferences, refinement, undefined, undefined, false, likedExamples.map(value => value.title));
+      if (requestId !== scoutRequestId.current) return;
       const suggestions = result.picks.map(pick => ({ item: pickToExperience(pick), reason: pick.reason }));
       setRemoteSuggestions(suggestions);
       setRemoteItems(current => [...suggestions.map(suggestion => suggestion.item), ...current.filter(item => !suggestions.some(suggestion => suggestion.item.id === item.id))]);
@@ -822,11 +849,13 @@ function AppContent({ accountUid }: { accountUid: string }) {
       setScoutMessage(result.message);
       setScoutCitations(result.citations ?? []);
     } catch (error) {
-      setRemoteSuggestions([]);
-      setScoutMessage(error instanceof Error ? `The scout is unavailable: ${error.message}` : 'The scout is unavailable. Please try again.');
-    } finally { setScoutLoading(false); }
+      if (requestId === scoutRequestId.current) {
+        setRemoteSuggestions([]);
+        setScoutMessage(error instanceof Error ? `The scout is unavailable: ${error.message}` : 'The scout is unavailable. Please try again.');
+      }
+    } finally { if (requestId === scoutRequestId.current) setScoutLoading(false); }
   };
-  const runHomeScout = async (searchPreferences: Preferences = discoverPreferences) => {
+  const runHomeScout = async () => {
     if (homeScoutBusy.current) return;
     homeScoutBusy.current = true;
     const requestId = ++homeRequestId.current;
@@ -836,18 +865,40 @@ function AppContent({ accountUid }: { accountUid: string }) {
     setHomeScoutCitations([]);
     if (!remoteScoutConfigured) { setHomeScoutMessage('Live discovery is not connected in this preview. Explore the sample ideas below.'); setHomeLoading(false); homeScoutBusy.current = false; return; }
     try {
-      const farther = searchPreferences.maxDistanceKm > preferences.maxDistanceKm;
-      const prompt = farther ? 'Look a little further for current activities in nearby towns and areas within my wider travel radius. Match my saved interests and budget. Prioritize specific source-linked options I can plan soon.' : 'Find current activities that match my saved interests, budget and travel preferences. Prioritize specific source-linked options I can plan soon.';
-      const result = await askRemoteScout(prompt, searchPreferences, 'balanced', undefined, undefined, false, likedExamples.map(value => value.title));
+      const result = await askRemoteScout('Find current activities that match my saved interests, budget and travel preferences. Prioritize specific source-linked options I can plan soon.', preferences, 'balanced', undefined, undefined, false, likedExamples.map(value => value.title), true);
       if (requestId !== homeRequestId.current) return;
       setHomeWebIdeas((result.ideas ?? []).filter(idea => feedback[idea.id] !== 'pass'));
       setHomeScoutMessage(result.message);
       setHomeScoutCitations(result.citations ?? []);
       setAutoScoutStatus(result.mode === 'web' ? 'Your scout checked the public web.' : result.mode === 'live' ? 'Your scout checked source-linked ideas.' : 'Your scout found sample ideas.');
-      if (!farther) lastAutoScoutKey.current = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes]);
+      lastAutoScoutKey.current = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes]);
     } catch (error) {
       if (requestId === homeRequestId.current) { setHomeScoutMessage(error instanceof Error ? `The scout is unavailable: ${error.message}` : 'The scout is unavailable. Please try again.'); setAutoScoutStatus('Live scout needs another try.'); }
     } finally { homeScoutBusy.current = false; if (requestId === homeRequestId.current) setHomeLoading(false); }
+  };
+  const runWideScout = async () => {
+    if (wideLoading) return;
+    const requestId = ++wideRequestId.current;
+    setWideLoading(true);
+    setWideWebIdeas([]);
+    setWideScoutMessage('');
+    if (!remoteScoutConfigured) {
+      setWideScoutMessage('Live discovery is not connected in this preview.');
+      setWideSearchKey(widerSearchKey);
+      setWideLoading(false);
+      return;
+    }
+    try {
+      const result = await askRemoteScout('Look a little further for current activities in nearby towns and areas within my wider travel radius. Match my saved interests and budget. Prioritize specific source-linked options I can plan soon.', { ...preferences, maxDistanceKm: furtherRadiusKm }, 'balanced', undefined, undefined, false, likedExamples.map(value => value.title));
+      if (requestId !== wideRequestId.current) return;
+      setWideWebIdeas((result.ideas ?? []).filter(idea => feedback[idea.id] !== 'pass'));
+      setWideScoutMessage(result.message);
+      setWideSearchKey(widerSearchKey);
+    } catch (error) {
+      if (requestId === wideRequestId.current) setWideScoutMessage(error instanceof Error ? `The wider search is unavailable: ${error.message}` : 'The wider search is unavailable. Please try again.');
+    } finally {
+      if (requestId === wideRequestId.current) setWideLoading(false);
+    }
   };
   const runNowScout = async (hours: number) => {
     const requestId = ++nowRequestId.current;
@@ -933,7 +984,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
         <Action label={journeyDestination ? 'Check route' : 'Directions'} onPress={() => { void Linking.openURL(directions); }} secondary small />
         <Action label={saved ? 'Saved ✓' : 'Save'} onPress={() => setSavedWebIdeas(current => saved ? current.filter(item => item.id !== idea.id) : [idea, ...current].slice(0, 100))} secondary small />
         <Pressable onPress={() => toggleLove(idea.id, idea.title)} style={styles.textAction}><Text style={styles.textActionLabel}>{feedback[idea.id] === 'love' ? 'Loved ✓' : 'Love'}</Text></Pressable>
-        <Pressable onPress={() => { setFeedback(current => ({ ...current, [idea.id]: 'pass' })); setLikedExamples(current => current.filter(value => value.id !== idea.id)); setHomeWebIdeas(current => current.filter(item => item.id !== idea.id)); setSearchWebIdeas(current => current.filter(item => item.id !== idea.id)); setNowIdeas(current => current.filter(item => item.id !== idea.id)); setRouteIdeas(current => current.filter(item => item.id !== idea.id)); setSavedScoutIdeas(current => current.filter(item => item.id !== idea.id)); setSerendipityWebPick(current => current?.id === idea.id ? null : current); setSavedWebIdeas(current => current.filter(item => item.id !== idea.id)); }} style={styles.textAction}><Text style={styles.textActionLabel}>Pass</Text></Pressable>
+        <Pressable onPress={() => { setFeedback(current => ({ ...current, [idea.id]: 'pass' })); setLikedExamples(current => current.filter(value => value.id !== idea.id)); setHomeWebIdeas(current => current.filter(item => item.id !== idea.id)); setWideWebIdeas(current => current.filter(item => item.id !== idea.id)); setSearchWebIdeas(current => current.filter(item => item.id !== idea.id)); setNowIdeas(current => current.filter(item => item.id !== idea.id)); setRouteIdeas(current => current.filter(item => item.id !== idea.id)); setSavedScoutIdeas(current => current.filter(item => item.id !== idea.id)); setSerendipityWebPick(current => current?.id === idea.id ? null : current); setSavedWebIdeas(current => current.filter(item => item.id !== idea.id)); }} style={styles.textAction}><Text style={styles.textActionLabel}>Pass</Text></Pressable>
       </View>
       {idea.reason ? <Text style={styles.webReason} numberOfLines={2}>WHY IT FITS · {idea.reason}</Text> : null}
       <Text style={styles.webSummary} numberOfLines={3}>{idea.summary}</Text>
@@ -985,55 +1036,65 @@ function AppContent({ accountUid }: { accountUid: string }) {
         <Action label={savedIds.includes(selected.id) ? 'Remove from saved' : 'Save for later'} onPress={() => toggleSaved(selected)} />
       </View> : tab === 'Discover' ? <View>
         <ImageBackground source={require('./assets/original-photo-library/beginner-partner-dance.png')} style={styles.heroImage} imageStyle={styles.heroImageCorners}><Text style={styles.heroKicker}>MAKE A STORY OF IT</Text><Text style={styles.heroTitle}>{'Find the\nunexpected.'}</Text></ImageBackground>
-        <View style={styles.homeIntro}><View style={styles.homeIntroText}><Text style={styles.sectionKicker}>LOCAL INSPIRATION</Text><Text style={styles.homeTitle}>{showingTorontoSamples ? 'Toronto ideas.' : `${preferences.place.split(',')[0].trim() || 'Local'} ideas.`}</Text></View><Pressable onPress={() => setTab('Settings')} style={styles.placeButton}><Text style={styles.placeButtonText}>⌖  Change place</Text></Pressable></View>
-        <Text style={styles.homeLead}>{showingTorontoSamples ? 'Toronto sample ideas appear below. Featured destinations link to real organizer listings.' : homeWebIdeas.length || homeScoutCitations.length ? `Your scout found source-linked ideas for ${preferences.place}. Check each source before making plans.` : remoteScoutConfigured ? `Ask your scout to check current public sources for activities that fit your settings in ${preferences.place}.` : `No source-linked ideas for ${preferences.place} yet. The live web scout is being connected.`}</Text>
-        <Action label={homeLoading ? 'Scouting for you…' : 'Find ideas for me'} onPress={() => { void runHomeScout(); }} />
-        {homeLoading && <Text style={styles.notice}>Checking public sources near {preferences.place}…</Text>}
-        {autoScoutStatus ? <Text style={styles.scoutStatus}>✦  {autoScoutStatus}</Text> : null}
-        {homeWebIdeas.length ? <Text style={styles.webIntro}>{searchOpen && (activeQuery || activeCategory !== 'All') ? `Your scout found ${homeWebIdeas.length} ideas. ${visibleHomeWebIdeas.length} match these filters.` : homeScoutMessage}</Text> : homeScoutCitations.length ? <CitedScoutText message={homeScoutMessage} citations={homeScoutCitations} /> : homeScoutMessage ? <Text style={styles.notice}>{homeScoutMessage}</Text> : null}
-        <Pressable onPress={() => { if (searchOpen) { setQuery(''); setCategory('All'); } setSearchOpen(value => !value); }} style={styles.searchToggle} accessibilityRole="button" accessibilityState={{ expanded: searchOpen }}><Text style={styles.searchToggleText}>⌕  Search and refine</Text><Text style={styles.searchChevron}>{searchOpen ? '−' : '+'}</Text></Pressable>
-        {searchOpen && <View style={styles.searchPanel}>
-          <TextInput value={query} onChangeText={setQuery} placeholder="Filter events and ideas: dance, pottery…" placeholderTextColor="#6C8285" style={styles.search} returnKeyType="done" />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}><Pill label="All" active={category === 'All'} onPress={() => setCategory('All')} />{categories.map(value => <Pill key={value} label={value} active={category === value} onPress={() => setCategory(value)} />)}</ScrollView>
-          <View style={styles.rowBetween}><Text style={styles.helper}>{weeklyVisible.length} of {weeklyAll.length} weekly events · {visibleHomeWebIdeas.length} scout ideas</Text><Pressable onPress={() => { setQuery(''); setCategory('All'); }}><Text style={styles.clearText}>Clear</Text></Pressable></View>
-          <Text style={styles.helper}>These filters narrow the ideas below. “Find ideas for me” asks the scout to search for new ones.</Text>
-        </View>}
-        <View style={styles.weekSection}>
-          <Text style={styles.weekKicker}>NEAR YOU, SOON</Text>
-          <Text style={styles.weekTitle}>What’s on this week.</Text>
-          <Text style={styles.weekPlace}>A browseable list for {preferences.place}. Open a source to check the details.</Text>
-          <View style={styles.weekTopline}><Text style={styles.weekRange}>{formatWeekDate(weeklyToday, { month: 'short', day: 'numeric' })} – {formatWeekDate(weeklyEnd, { month: 'short', day: 'numeric' })}</Text><Text style={styles.weekCount}>{searchOpen && (activeQuery || activeCategory !== 'All') ? `${weeklyVisible.length} of ${weeklyAll.length}` : `${weeklyVisible.length} ${weeklyVisible.length === 1 ? 'event' : 'events'}`}</Text></View>
-          {weeklyLocalLoading && <Text style={styles.weekStatus}>Gathering the shared area list…</Text>}
-          {weeklyLocalMessage && <Text style={styles.weekStatus}>{weeklyLocalMessage}</Text>}
-          {weeklyDays.map(date => <View key={date} style={styles.weekDay}>
-            <View style={styles.weekDayHeading}><Text style={styles.weekDayName}>{date === weeklyToday ? 'Today' : date === addDaysToDateKey(weeklyToday, 1) ? 'Tomorrow' : formatWeekDate(date, { weekday: 'long' })}</Text><Text style={styles.weekDayDate}>{formatWeekDate(date, { month: 'short', day: 'numeric' })}</Text></View>
-            {weeklyVisible.filter(event => event.eventDate === date).map(event => <Pressable key={event.id} style={styles.weekEvent} accessibilityRole="link" accessibilityLabel={`${event.title}, ${formatWeekDate(date, { month: 'long', day: 'numeric' })}, ${formatWeekTime(event.eventTime)}. Open source`} onPress={() => { const url = safeSourceUrl(event.sourceUrl); if (url) void Linking.openURL(url); }}>
-              <WeekThumbnail event={event} />
-              <View style={styles.weekEventCopy}><Text style={styles.weekCategory}>{event.category.toUpperCase()}</Text><Text style={styles.weekEventTitle} numberOfLines={2}>{event.title}</Text><Text style={styles.weekEventMeta}>{formatWeekTime(event.eventTime)} · {event.sourceName}</Text></View>
-              <Text style={styles.weekArrow}>↗</Text>
-            </Pressable>)}
-          </View>)}
-          {!weeklyDays.length && !weeklyLocalLoading && <Text style={styles.weekEmpty}>{searchOpen && (activeQuery || activeCategory !== 'All') ? 'No weekly events match these filters. Clear them to see the full list.' : remoteScoutConfigured ? 'No source linked events found for the next seven days. Check back later or try another city in Settings.' : 'The live weekly list will appear when the scout is connected.'}</Text>}
-          <Text style={styles.weekFooter}>{weeklyLocalFeed?.checkedAt ? `List searched ${new Date(weeklyLocalFeed.checkedAt).toLocaleDateString()}. ` : ''}Events can change or sell out. Check each organizer’s page before going.</Text>
+        <View style={styles.homeIntro}><View style={styles.homeIntroText}><Text style={styles.sectionKicker}>LOCAL INSPIRATION</Text><Text style={styles.homeTitle}>{`${preferences.place.split(',')[0].trim() || 'Local'} ideas.`}</Text></View><Pressable onPress={() => setTab('Settings')} style={styles.placeButton}><Text style={styles.placeButtonText}>⌖  Change place</Text></Pressable></View>
+        <Text style={styles.homeLead}>Your scout checks current public sources near {preferences.place}. Choose how you want to explore.</Text>
+        <View style={styles.discoverChoices}>
+          {([
+            ['for-you', 'For you'],
+            ['search', 'Search & refine'],
+            ['further', 'Look further'],
+            ['serendipity', 'Serendipity'],
+          ] as [DiscoverMode, string][]).map(([mode, label]) => <Pressable key={mode} onPress={() => {
+            setDiscoverMode(mode);
+            setDiscoverWide(mode === 'further');
+            if (mode === 'further' && wideSearchKey !== widerSearchKey && !wideLoading) void runWideScout();
+          }} style={[styles.discoverChoice, discoverMode === mode && styles.discoverChoiceSelected]} accessibilityRole="button" accessibilityState={{ selected: discoverMode === mode }}><Text style={[styles.discoverChoiceText, discoverMode === mode && styles.discoverChoiceTextSelected]}>{label}</Text>{mode === 'further' && <ArrowIcon direction="right" size={18} color={discoverMode === mode ? ink : sea} />}</Pressable>)}
         </View>
-        {visibleHomeWebIdeas.map(idea => webIdeaCard(idea))}
-        {furtherRadiusKm > preferences.maxDistanceKm && <Pressable onPress={() => { if (homeLoading) return; const nextWide = !discoverWide; setDiscoverWide(nextWide); setShowMoreIdeas(nextWide); void runHomeScout(nextWide ? { ...preferences, maxDistanceKm: furtherRadiusKm } : preferences); }} disabled={homeLoading} style={[styles.lookFurther, discoverWide && styles.lookFurtherActive]} accessibilityRole="button" accessibilityState={{ disabled: homeLoading }}><View style={styles.lookFurtherCopy}><Text style={styles.lookFurtherTitle}>{discoverWide ? 'Back to nearby' : 'Look a little further'}</Text><Text style={styles.lookFurtherDetail}>{discoverWide ? `Wider Discover range: about ${formatDistance(furtherRadiusKm, preferences.distanceUnit)}. Your saved range is ${formatDistance(preferences.maxDistanceKm, preferences.distanceUnit)}.` : `Ask your scout to look about ${formatDistance(furtherRadiusKm, preferences.distanceUnit)} from ${preferences.place.split(',')[0].trim() || 'your city'}. Your saved range stays ${formatDistance(preferences.maxDistanceKm, preferences.distanceUnit)}.`}</Text></View><Text style={styles.lookFurtherArrow}>{discoverWide ? '↩' : '→'}</Text></Pressable>}
-        {searchOpen && <View style={styles.searchPanel}>
-          <View style={styles.agentPanel}><Text style={styles.agentKicker}>✦ YOUR PERSONAL SCOUT</Text><Text style={styles.agentTitle}>What are you up for?</Text><Text style={styles.agentLead}>{remoteScoutConfigured ? 'Try a free hour, a new skill, or a little adventure.' : 'Preview mode: this searches sample ideas. Live AI is not connected yet.'}</Text>
-            <TextInput value={agentPrompt} onChangeText={setAgentPrompt} onSubmitEditing={() => runScout(agentPrompt)} placeholder="Try “free dance class this weekend”" placeholderTextColor="#68868B" style={styles.agentInput} returnKeyType="search" />
-            <Action label="Find ideas" onPress={() => runScout(agentPrompt)} />
-            {scoutMessage ? <Text style={styles.helper}>{scoutCitations.length ? 'Source-linked ideas are below.' : scoutMessage}</Text> : null}
-            <View style={styles.promptRow}>{['Free this weekend', 'Something creative', 'Surprise me'].map(prompt => <Pressable key={prompt} onPress={() => { setAgentPrompt(prompt); runScout(prompt); }} style={styles.promptChip}><Text style={styles.promptText}>{prompt}</Text></Pressable>)}</View>
-          </View>
-          {activeRequest !== null && <View style={styles.agentResults}><View style={styles.rowBetween}><Text style={styles.subheading}>A few ideas for you</Text><Pressable onPress={() => { setActiveRequest(null); setAgentPrompt(''); }}><Text style={styles.clearText}>Clear</Text></Pressable></View>
-            <Text style={styles.resultIntro}>{activeRequest.trim() ? `For “${activeRequest.trim()}”` : 'Based on your interests and practical limits'}</Text>
-            {searchWebIdeas.length ? <Text style={styles.webIntro}>{scoutMessage}</Text> : scoutCitations.length ? <CitedScoutText message={scoutMessage} citations={scoutCitations} /> : scoutMessage ? <Text style={styles.notice}>{scoutMessage}</Text> : null}
-            {scoutLoading ? <Text style={styles.notice}>Your scout is looking…</Text> : searchWebIdeas.length ? searchWebIdeas.map(idea => webIdeaCard(idea)) : scoutCitations.length ? null : agentSuggestions.length ? agentSuggestions.map(suggestion => <View key={suggestion.item.id}><Text style={styles.whyText}>WHY IT FITS · {suggestion.reasons.join(' · ')}</Text>{itemCard(suggestion.item)}</View>) : <View style={styles.empty}><Text style={styles.emptyTitle}>{showingTorontoSamples && !remoteScoutConfigured ? 'No close match in these sample ideas.' : `No verified match for ${preferences.place} yet.`}</Text><Text style={styles.summary}>{showingTorontoSamples && !remoteScoutConfigured ? 'Try another interest, more time, a larger budget, or a wider radius.' : 'Try another interest or adjust your budget or radius. Real listings need verified organizer sources.'}</Text></View>}
-            <View style={styles.chipRow}><Pill label="Something different" active={agentMode === 'different'} onPress={() => runScout(activeRequest, 'different')} /><Pill label="Cheaper" active={agentMode === 'cheaper'} onPress={() => runScout(activeRequest, 'cheaper')} /><Pill label="Closer" active={agentMode === 'closer'} onPress={() => runScout(activeRequest, 'closer')} /></View>
+        {discoverMode === 'for-you' && <View>
+          <View style={styles.rowBetween}><Text style={styles.subheading}>{homeLoading ? 'Finding up to 5 ideas' : homeWebIdeas.length ? `${homeWebIdeas.length} ideas for you` : 'Found for you'}</Text><Action label={homeLoading ? 'Checking…' : 'Refresh ideas'} onPress={() => { if (!homeLoading) void runHomeScout(); }} secondary small /></View>
+          {homeLoading && <Text style={styles.notice}>Checking current public sources near {preferences.place}…</Text>}
+          {!homeLoading && autoScoutStatus ? <Text style={styles.scoutStatus}>✦  {autoScoutStatus}</Text> : null}
+          {homeWebIdeas.length ? <><Text style={styles.webIntro}>{homeScoutMessage}</Text>{homeWebIdeas.map(idea => webIdeaCard(idea))}</> : homeScoutCitations.length ? <CitedScoutText message={homeScoutMessage} citations={homeScoutCitations} /> : !homeLoading && homeScoutMessage ? <Text style={styles.notice}>{weeklyAll.length && homeScoutMessage.startsWith('I could not find a source-linked activity') ? `No personalized picks matched this search. The Week tab has ${weeklyAll.length} source-linked ${weeklyAll.length === 1 ? 'event' : 'events'} to browse.` : homeScoutMessage}</Text> : null}
+          {!homeLoading && !homeWebIdeas.length && weeklyAll.length > 0 && <Action label={`See ${weeklyAll.length} events this week`} onPress={() => setTab('This Week')} secondary small />}
+          {alerts.length > 0 && <Pressable onPress={() => setTab('Settings')} style={styles.alertBanner}><Text style={styles.alertBannerTitle}>✦ {alerts.length} timely {alerts.length === 1 ? 'find' : 'finds'} for you</Text><Text style={styles.alertBannerBody}>See what fits your interests →</Text></Pressable>}
+          {(localExamples.length > 0 || remoteItems.length > 0) && <>
+            <View style={styles.rowBetween}><Text style={styles.subheading}>{showDiverse ? 'A different direction' : localExamples.length ? 'Toronto sample ideas' : 'Local ideas for you'}</Text><Text style={styles.resultCount}>{homeOrganicItems.length} shown</Text></View>
+            {catalogLoading ? <Text style={styles.notice}>Loading ideas…</Text> : homeOrganicItems.map(item => <View key={item.id}><Text style={styles.whyText}>{fitReason(item)}</Text>{itemCard(item)}</View>)}
+            {!showMoreIdeas && organicItems.length > 3 && <Action label="See more local ideas" onPress={() => setShowMoreIdeas(true)} secondary />}
+            {organicItems.length > 1 && <Action label={showDiverse ? 'Back to your picks' : 'Show me something different'} onPress={() => setShowDiverse(value => !value)} secondary />}
+          </>}
+          {!homeLoading && <View style={styles.featuredSection}><View style={styles.rowBetween}><Text style={styles.featuredKicker}>{weeklyPicks.length ? 'THIS WEEK’S BIG ADVENTURES' : 'WORTH THE TRIP'}</Text><Text style={styles.featuredBadge}>PB&B PICKS</Text></View>
+            <Text style={styles.featuredDisclosure}>{weeklyPicks.length ? `New source-linked paid adventures found ${formatDate(weeklyFeatured!.checkedAt!)}. This set stays for seven days. No organizer paid for placement; confirm prices and availability before booking.` : `Real paid experiences selected by PB&B. No organizer paid for placement. Prices and availability were checked November 8, 2026; confirm them on the official page before booking.${featuredLoading ? ' Looking for this week’s new adventures…' : ''}`}</Text>
+            {visibleFeatured.map(destination => <FeaturedDestinationCard key={destination.id} destination={destination} />)}
           </View>}
         </View>}
-        <Pressable onPress={() => setSerendipityOpen(value => !value)} style={styles.serendipityToggle} accessibilityRole="button" accessibilityState={{ expanded: serendipityOpen }}><View><Text style={styles.serendipityTitle}>✦  Serendipity</Text><Text style={styles.serendipitySubtitle}>Let something wonderful find you</Text></View><Text style={styles.serendipityChevron}>{serendipityOpen ? '−' : '+'}</Text></Pressable>
-        {serendipityOpen && <View style={styles.serendipityPanel}>
+        {discoverMode === 'search' && <View>
+          <Text style={styles.subheading}>Search & refine</Text>
+          <TextInput value={query} onChangeText={setQuery} placeholder="Filter ideas: dance, pottery, markets…" placeholderTextColor="#6C8285" style={styles.search} returnKeyType="done" />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}><Pill label="All" active={category === 'All'} onPress={() => setCategory('All')} />{categories.map(value => <Pill key={value} label={value} active={category === value} onPress={() => setCategory(value)} />)}</ScrollView>
+          <Text style={styles.helper}>{visibleHomeWebIdeas.length} of {homeWebIdeas.length} current picks match these filters. Search below for new ideas.</Text>
+          {visibleHomeWebIdeas.map(idea => webIdeaCard(idea))}
+          <View style={styles.agentPanel}><Text style={styles.agentKicker}>✦ YOUR PERSONAL SCOUT</Text><Text style={styles.agentTitle}>What are you up for?</Text><Text style={styles.agentLead}>Ask for a free hour, a new skill, or a little adventure.</Text>
+            <TextInput value={agentPrompt} onChangeText={setAgentPrompt} onSubmitEditing={() => { void runScout(agentPrompt); }} placeholder="Try “free dance class this weekend”" placeholderTextColor="#68868B" style={styles.agentInput} returnKeyType="search" />
+            <View style={styles.promptRow}>{['Free this weekend', 'Something creative', 'Surprise me'].map(prompt => <Pressable key={prompt} onPress={() => { setAgentPrompt(prompt); void runScout(prompt); }} style={styles.promptChip}><Text style={styles.promptText}>{prompt}</Text></Pressable>)}</View>
+            <Action label={scoutLoading ? 'Finding ideas…' : 'Find ideas'} onPress={() => { if (!scoutLoading) void runScout(agentPrompt); }} />
+          </View>
+          {activeRequest !== null && <View style={styles.agentResults}>
+            <View style={styles.rowBetween}><Text style={styles.subheading}>Search results</Text><Pressable onPress={() => { scoutRequestId.current += 1; setActiveRequest(null); setAgentPrompt(''); setScoutLoading(false); }}><Text style={styles.clearText}>Clear</Text></Pressable></View>
+            <Text style={styles.resultIntro}>{activeRequest.trim() ? `For “${activeRequest.trim()}”` : 'Based on your interests and practical limits'}</Text>
+            {visibleSearchWebIdeas.length ? <Text style={styles.webIntro}>{scoutMessage}</Text> : scoutCitations.length ? <CitedScoutText message={scoutMessage} citations={scoutCitations} /> : scoutMessage ? <Text style={styles.notice}>{scoutMessage}</Text> : null}
+            {scoutLoading ? <Text style={styles.notice}>Your scout is looking…</Text> : visibleSearchWebIdeas.length ? visibleSearchWebIdeas.map(idea => webIdeaCard(idea)) : scoutCitations.length ? null : agentSuggestions.length ? agentSuggestions.map(suggestion => <View key={suggestion.item.id}><Text style={styles.whyText}>WHY IT FITS · {suggestion.reasons.join(' · ')}</Text>{itemCard(suggestion.item)}</View>) : <View style={styles.empty}><Text style={styles.emptyTitle}>No verified match yet.</Text><Text style={styles.summary}>Try another interest or adjust your budget or radius. Real listings need verified organizer sources.</Text></View>}
+            <View style={styles.chipRow}><Pill label="Something different" active={agentMode === 'different'} onPress={() => { void runScout(activeRequest, 'different'); }} /><Pill label="Cheaper" active={agentMode === 'cheaper'} onPress={() => { void runScout(activeRequest, 'cheaper'); }} /><Pill label="Closer" active={agentMode === 'closer'} onPress={() => { void runScout(activeRequest, 'closer'); }} /></View>
+          </View>}
+        </View>}
+        {discoverMode === 'further' && <View>
+          <Pressable onPress={() => { setDiscoverMode('for-you'); setDiscoverWide(false); }} style={styles.lookFurther} accessibilityRole="button"><ArrowIcon direction="left" color={sea} /><View style={styles.lookFurtherCopy}><Text style={styles.lookFurtherTitle}>Back to nearby</Text><Text style={styles.lookFurtherDetail}>Return to your usual {formatDistance(preferences.maxDistanceKm, preferences.distanceUnit)} range.</Text></View></Pressable>
+          <Text style={styles.lead}>Looking up to about {formatDistance(furtherRadiusKm, preferences.distanceUnit)} from {preferences.place.split(',')[0].trim() || 'your city'}.</Text>
+          {wideLoading ? <Text style={styles.notice}>Checking public sources in nearby towns…</Text> : wideWebIdeas.length ? <><Text style={styles.webIntro}>{wideScoutMessage}</Text>{wideWebIdeas.map(idea => webIdeaCard(idea))}</> : wideScoutMessage ? <View style={styles.empty}><Text style={styles.emptyTitle}>No wider match yet.</Text><Text style={styles.summary}>{wideScoutMessage}</Text></View> : null}
+          {!wideLoading && <Action label="Search farther again" onPress={() => { void runWideScout(); }} secondary small />}
+        </View>}
+        {discoverMode === 'serendipity' && <View>
+          <Text style={styles.subheading}>Serendipity</Text>
           <Text style={styles.serendipityIntro}>A wild card near you. Your scout sets aside your usual likes and looks for something cool, fun or unexpected.</Text>
           <Text style={styles.label}>How would you get there?</Text><View style={styles.chipRow}>{(preferences.travelModes ?? []).filter(mode => mode !== 'plane').map(mode => <Pill key={mode} label={travelModeLabels[mode]} active={travelMode === mode} onPress={() => { surpriseRequestId.current += 1; setTravelMode(mode); setSerendipityPick(null); setSerendipityWebPick(null); setSerendipityMessage(''); setSerendipityLoading(false); setSerendipityTried(false); }} />)}</View>
           {!preferences.travelModes.some(mode => mode !== 'plane') && <Text style={styles.notice}>Choose walking or another local travel option in Settings first.</Text>}
@@ -1044,16 +1105,30 @@ function AppContent({ accountUid }: { accountUid: string }) {
           {serendipityPick && <View><Text style={styles.whyText}>YOUR {travelMode.toUpperCase()} SURPRISE · SAMPLE IDEA</Text>{itemCard(serendipityPick)}</View>}
           {serendipityTried && !serendipityLoading && !serendipityPick && !serendipityWebPick && <Text style={styles.notice}>{serendipityMessage || `No ${travelMode} surprise has a reliable source near ${preferences.place} yet. Try another way to travel.`}</Text>}
         </View>}
-        {alerts.length > 0 && <Pressable onPress={() => setTab('Settings')} style={styles.alertBanner}><Text style={styles.alertBannerTitle}>✦ {alerts.length} timely {alerts.length === 1 ? 'find' : 'finds'} for you</Text><Text style={styles.alertBannerBody}>See what fits your interests →</Text></Pressable>}
-        <View style={styles.rowBetween}><Text style={styles.subheading}>{showDiverse ? 'A different direction' : showingTorontoSamples ? 'Toronto sample ideas' : 'Local ideas for you'}</Text><Text style={styles.resultCount}>{homeOrganicItems.length} shown</Text></View>
-        {catalogLoading ? <Text style={styles.notice}>Loading ideas…</Text> : homeOrganicItems.length ? homeOrganicItems.map(item => <View key={item.id}><Text style={styles.whyText}>{fitReason(item)}</Text>{itemCard(item)}</View>) : homeWebIdeas.length || homeScoutCitations.length ? <Text style={styles.helper}>Open each source above to check the latest details with the organizer.</Text> : <View style={styles.empty}><Text style={styles.emptyTitle}>No ideas here yet.</Text><Text style={styles.summary}>{remoteScoutConfigured ? 'Try another interest, budget, or travel radius in Settings.' : 'Live web discoveries are not connected in this preview yet.'}</Text></View>}
-        <View style={styles.featuredSection}><View style={styles.rowBetween}><Text style={styles.featuredKicker}>{weeklyPicks.length ? 'THIS WEEK’S BIG ADVENTURES' : 'WORTH THE TRIP'}</Text><Text style={styles.featuredBadge}>PB&B PICKS</Text></View>
-          <Text style={styles.featuredDisclosure}>{weeklyPicks.length ? `New source-linked paid adventures found ${formatDate(weeklyFeatured!.checkedAt!)}. This set stays for seven days. No organizer paid for placement; confirm prices and availability before booking.` : `Real paid experiences selected by PB&B. No organizer paid for placement. Prices and availability were checked November 8, 2026; confirm them on the official page before booking.${featuredLoading ? ' Looking for this week’s new adventures…' : ''}`}</Text>
-          {visibleFeatured.map(destination => <FeaturedDestinationCard key={destination.id} destination={destination} />)}
-        </View>
-        {!showMoreIdeas && organicItems.length > 3 && !searchOpen && <Action label="See more local ideas" onPress={() => setShowMoreIdeas(true)} secondary />}
-        <Action label={showDiverse ? 'Back to your picks' : 'Show me something different'} onPress={() => setShowDiverse(value => !value)} secondary />
         <Text style={styles.footerNote}>Images are AI illustrations, not photos of the listed events or venues. Open official details for current information.</Text>
+      </View> : tab === 'This Week' ? <View>
+        <Text style={styles.sectionKicker}>SEVEN DAYS AHEAD</Text><Text style={styles.h1}>What’s on this week.</Text>
+        <Text style={styles.lead}>Source-linked events in {preferences.place}. Browse by interest or day, then check the organizer’s page for current details.</Text>
+        <TextInput value={weekQuery} onChangeText={setWeekQuery} placeholder="Search lessons, dance, markets…" placeholderTextColor="#6C8285" style={styles.search} returnKeyType="done" />
+        <Text style={styles.label}>By interest</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>{weekInterests.map(interest => <Pill key={interest} label={`${interest} · ${weeklyAll.filter(event => weekInterestMatches(event, interest)).length}`} active={weekInterest === interest} onPress={() => setWeekInterest(interest)} />)}</ScrollView>
+        <Text style={styles.label}>By day</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}><Pill label="All days" active={weekDay === 'All'} onPress={() => setWeekDay('All')} />{weekDates.map(date => <Pill key={date} label={formatWeekDate(date, { weekday: 'short', month: 'short', day: 'numeric' })} active={weekDay === date} onPress={() => setWeekDay(date)} />)}</ScrollView>
+        <View style={styles.weekSection}>
+          <View style={styles.weekTopline}><Text style={styles.weekRange}>{formatWeekDate(weeklyToday, { month: 'short', day: 'numeric' })} – {formatWeekDate(weeklyEnd, { month: 'short', day: 'numeric' })}</Text><Text style={styles.weekCount}>{weeklyVisible.length} of {weeklyAll.length} events</Text></View>
+          {weeklyLocalLoading && <Text style={styles.weekStatus}>Gathering this week’s public listings…</Text>}
+          {weeklyLocalMessage && <Text style={styles.weekStatus}>{weeklyLocalMessage}</Text>}
+          {weeklyDays.map(date => <View key={date} style={styles.weekDay}>
+            <View style={styles.weekDayHeading}><Text style={styles.weekDayName}>{date === weeklyToday ? 'Today' : date === addDaysToDateKey(weeklyToday, 1) ? 'Tomorrow' : formatWeekDate(date, { weekday: 'long' })}</Text><Text style={styles.weekDayDate}>{formatWeekDate(date, { month: 'short', day: 'numeric' })}</Text></View>
+            {weeklyVisible.filter(event => event.eventDate === date).map(event => <Pressable key={event.id} style={styles.weekEvent} accessibilityRole="link" accessibilityLabel={`${event.title}, ${formatWeekDate(date, { month: 'long', day: 'numeric' })}, ${formatWeekTime(event.eventTime)}. Open source`} onPress={() => { const url = safeSourceUrl(event.sourceUrl); if (url) void Linking.openURL(url); }}>
+              <WeekThumbnail event={event} />
+              <View style={styles.weekEventCopy}><Text style={styles.weekCategory}>{event.category.toUpperCase()}</Text><Text style={styles.weekEventTitle} numberOfLines={2}>{event.title}</Text><Text style={styles.weekEventMeta}>{formatWeekTime(event.eventTime)} · {event.sourceName}</Text></View>
+              <Text style={styles.weekArrow}>↗</Text>
+            </Pressable>)}
+          </View>)}
+          {!weeklyDays.length && !weeklyLocalLoading && <Text style={styles.weekEmpty}>{weeklyAll.length ? 'No events match these filters. Try another interest or day.' : remoteScoutConfigured ? 'No dated source-linked events found for this week yet. Try another city or check back later.' : 'The live weekly list will appear when the scout is connected.'}</Text>}
+          <Text style={styles.weekFooter}>{weeklyLocalFeed?.checkedAt ? `List searched ${new Date(weeklyLocalFeed.checkedAt).toLocaleDateString()}. ` : ''}Events can change or sell out. Check each organizer’s page before going.</Text>
+        </View>
       </View> : tab === 'Now' ? <View>
         <Text style={styles.sectionKicker}>SPONTANEOUS</Text><Text style={styles.h1}>What can I do today?</Text><Text style={styles.lead}>Your scout looks for source-linked ideas near {preferences.place} that fit the time you have, your interests and your budget.</Text>
         <Text style={styles.label}>Time available, including travel</Text><View style={styles.chipRow}>{[1, 2, 3, 5].map(value => <Pill key={value} label={`${value} hr`} active={timeHours === value} onPress={() => { nowRequestId.current += 1; setTimeHours(value); setNowIdeas([]); setNowMessage(''); setNowLoading(false); }} />)}</View>
@@ -1174,7 +1249,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
         <Action label="Clear passes and loves" onPress={() => setFeedback({})} secondary />
       </View>}
     </ScrollView>
-    {!selected && <View style={styles.tabBar}>{tabs.map(value => <Pressable key={value} onPress={() => setTab(value)} style={styles.tab} accessibilityRole="tab" accessibilityState={{ selected: tab === value }}><View style={styles.tabIconSlot}>{value === 'Settings' ? <SettingsIcon size={22} color={tab === value ? sea : '#667F82'} /> : <Text style={[styles.tabIcon, tab === value && styles.tabActive]}>{value === 'Discover' ? '✦' : value === 'Now' ? '◷' : value === 'Along the Way' ? '↗' : '♡'}</Text>}</View><Text style={[styles.tabText, tab === value && styles.tabActive]}>{value === 'Along the Way' ? 'Along' : value}</Text></Pressable>)}</View>}
+    {!selected && <View style={styles.tabBar}>{tabs.map(value => <Pressable key={value} onPress={() => setTab(value)} style={styles.tab} accessibilityRole="tab" accessibilityState={{ selected: tab === value }}><View style={styles.tabIconSlot}>{value === 'Settings' ? <SettingsIcon size={22} color={tab === value ? sea : '#667F82'} /> : value === 'This Week' ? <CalendarIcon size={22} color={tab === value ? sea : '#667F82'} /> : <Text style={[styles.tabIcon, tab === value && styles.tabActive]}>{value === 'Discover' ? '✦' : value === 'Now' ? '◷' : value === 'Along the Way' ? '↗' : '♡'}</Text>}</View><Text style={[styles.tabText, tab === value && styles.tabActive]}>{value === 'Along the Way' ? 'Along' : value === 'This Week' ? 'Week' : value}</Text></Pressable>)}</View>}
   </SafeAreaView>;
 }
 
@@ -1185,6 +1260,11 @@ function Setting({ label, value, onPress }: { label: string; value: boolean; onP
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F5F8F7' }, header: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderColor: '#DCE8E4' },
   heroImage: { height: 156, borderRadius: 2, padding: 21, justifyContent: 'flex-end', marginBottom: 16, overflow: 'hidden' }, heroImageCorners: { borderRadius: 2 }, heroKicker: { color: '#B9ED5C', fontSize: 10, fontWeight: '900', letterSpacing: 1.6, marginBottom: 7 }, heroTitle: { color: '#FFFFFF', fontSize: 27, fontWeight: '900', lineHeight: 31, letterSpacing: -0.6, maxWidth: 190 },
+  discoverChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24 },
+  discoverChoice: { width: '48%', minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 2, borderColor: '#18B8B0', backgroundColor: '#FFFFFF', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 12 },
+  discoverChoiceSelected: { backgroundColor: '#B9ED5C', borderColor: '#103D46' },
+  discoverChoiceText: { color: '#103D46', fontSize: 13, fontWeight: '800', textAlign: 'center' },
+  discoverChoiceTextSelected: { color: '#103D46' },
   agentPanel: { backgroundColor: '#103D46', borderRadius: 2, padding: 22, marginBottom: 26, overflow: 'hidden' }, agentKicker: { color: '#B9ED5C', fontWeight: '900', letterSpacing: 1.4, fontSize: 11, marginBottom: 14 }, agentTitle: { color: '#FFFFFF', fontSize: 29, lineHeight: 34, fontWeight: '900', letterSpacing: -0.7, marginBottom: 8 }, agentLead: { color: '#E2F2EF', fontSize: 14, lineHeight: 20, marginBottom: 18 }, agentInput: { backgroundColor: '#FFFFFF', borderRadius: 2, color: ink, paddingHorizontal: 15, paddingVertical: 13, fontSize: 14, marginBottom: 10 }, promptRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, promptChip: { borderRadius: 2, backgroundColor: '#18565E', paddingHorizontal: 11, paddingVertical: 8 }, promptText: { color: '#F5F8F7', fontWeight: '700', fontSize: 11 }, agentResults: { marginBottom: 28 }, resultIntro: { color: muted, fontSize: 13, marginBottom: 15 }, whyText: { color: sea, fontWeight: '800', fontSize: 10, lineHeight: 15, letterSpacing: 0.4, marginBottom: 8 }, clearText: { color: sea, fontWeight: '800', fontSize: 12 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }, welcome: { padding: 24, paddingTop: 52, paddingBottom: 52, maxWidth: 650, width: '100%', alignSelf: 'center' }, welcomeTitle: { color: ink, fontSize: 38, lineHeight: 43, fontWeight: '900', letterSpacing: -1.5, marginBottom: 12 }, undoBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#E0F7F5', borderRadius: 12, padding: 13, marginBottom: 15 }, undoText: { color: ink, fontSize: 12, flex: 1, marginRight: 10 }, undoLink: { color: sea, fontWeight: '800', fontSize: 13 },
   brand: { color: ink, fontWeight: '900', fontSize: 25, letterSpacing: -1.5 }, brandStar: { color: '#18B8B0' }, brandRow: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }, brandMark: { width: 48, height: 48, marginRight: 6 }, brandInfo: { flex: 1, minWidth: 0 }, brandSub: { color: muted, fontSize: 11, letterSpacing: 0.3 }, avatar: { backgroundColor: '#DDF6F3', height: 38, width: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' }, avatarText: { color: sea, fontWeight: '800', fontSize: 10 },

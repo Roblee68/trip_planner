@@ -25,3 +25,15 @@ test('weekly list keeps only dated local events with observed HTTPS sources', ()
   assert.deepEqual(events.map(event => event.title), ['Winter makers market', 'Next session']);
   assert.match(events[0].id, /^week-/);
 });
+
+
+test('weekly list can keep more than 24 distinct source-linked events', () => {
+  const now = new Date('2026-11-08T18:00:00Z');
+  const items = Array.from({ length: 30 }, (_, index) => ({
+    title: `Public event ${index + 1}`, eventDate: '2026-11-14', eventTime: '10:00',
+    category: 'community', place: 'Hamilton, Canada',
+    sourceUrl: `https://organizer.example/events/${index + 1}`,
+  }));
+  const result = eligibleWeeklyLocalEvents({ events: items }, new Set(items.map(item => item.sourceUrl)), 'Hamilton, Canada', now);
+  assert.equal(result.length, 30);
+});

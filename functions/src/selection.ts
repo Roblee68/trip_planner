@@ -15,7 +15,7 @@ export function parseScoutRequest(value: unknown): ScoutRequest {
   const travelModes = Array.isArray(data.travelModes) ? data.travelModes.filter((x): x is string => typeof x === 'string' && ['walk', 'transit', 'train', 'car', 'plane', 'ferry', 'boat'].includes(x)).slice(0, 7) : [];
   const likedExamples = Array.isArray(data.likedExamples) ? data.likedExamples.filter((x): x is string => typeof x === 'string').map(x => x.trim().slice(0, 120)).filter(Boolean).slice(0, 12) : [];
   const refinement = ['balanced', 'different', 'cheaper', 'closer'].includes(String(data.refinement)) ? data.refinement as ScoutRequest['refinement'] : 'balanced';
-  const occasion = data.occasion === 'today' ? 'today' : data.occasion === 'route' ? 'route' : data.occasion === 'surprise' ? 'surprise' : 'any';
+  const occasion = data.occasion === 'today' ? 'today' : data.occasion === 'route' ? 'route' : data.occasion === 'surprise' ? 'surprise' : data.occasion === 'discover' ? 'discover' : 'any';
   const localDate = typeof data.localDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.localDate) ? data.localDate : undefined;
   const localTime = typeof data.localTime === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(data.localTime) ? data.localTime : undefined;
   const timeAvailableHours = Number(data.timeAvailableHours);

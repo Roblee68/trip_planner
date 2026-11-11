@@ -67,12 +67,12 @@ export function pickToExperience(pick: Pick): Experience {
 }
 
 export type RouteSearch = { destination: string; style: 'highway' | 'towns' | 'either'; via: string; detourMinutes: number; timing: 'today' | 'weekend' | 'flexible' };
-export async function askRemoteScout(prompt: string, preferences: Preferences, refinement: 'balanced' | 'different' | 'cheaper' | 'closer', todayHours?: number, route?: RouteSearch, surprise = false, likedExamples: string[] = []): Promise<ScoutResponse> {
+export async function askRemoteScout(prompt: string, preferences: Preferences, refinement: 'balanced' | 'different' | 'cheaper' | 'closer', todayHours?: number, route?: RouteSearch, surprise = false, likedExamples: string[] = [], discover = false): Promise<ScoutResponse> {
   if (!remoteScoutConfigured) throw new Error('The agent connection is not configured on this device.');
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const auth = getScoutAuth();
   await ensureScoutGuestAuth(auth);
-  const call = httpsCallable(getFunctions(app, 'northamerica-northeast2'), 'suggestExperiences', { timeout: 110_000 });
+  const call = httpsCallable(getFunctions(app, 'northamerica-northeast2'), 'suggestExperiences', { timeout: 160_000 });
   const localNow = new Date();
   const localDate = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
   const localTime = `${String(localNow.getHours()).padStart(2, '0')}:${String(localNow.getMinutes()).padStart(2, '0')}`;
@@ -82,7 +82,7 @@ export async function askRemoteScout(prompt: string, preferences: Preferences, r
     maxBudget: preferences.maxBudget, maxDistanceKm: preferences.maxDistanceKm,
     interests: preferences.interests, topics: preferences.topics, travelModes: preferences.travelModes, refinement,
     likedExamples: surprise ? [] : likedExamples.slice(0, 12),
-    occasion: route ? 'route' : todayHours ? 'today' : surprise ? 'surprise' : 'any',
+    occasion: route ? 'route' : todayHours ? 'today' : surprise ? 'surprise' : discover ? 'discover' : 'any',
     localDate: todayHours || route?.timing === 'today' ? localDate : undefined,
     localTime: todayHours || route?.timing === 'today' ? localTime : undefined,
     timeAvailableHours: todayHours,

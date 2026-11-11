@@ -35,7 +35,7 @@ export type ScoutRequest = {
   travelModes: string[];
   likedExamples?: string[];
   refinement: 'balanced' | 'different' | 'cheaper' | 'closer';
-  occasion?: 'today' | 'route' | 'surprise' | 'any';
+  occasion?: 'today' | 'route' | 'surprise' | 'discover' | 'any';
   localDate?: string;
   localTime?: string;
   timeAvailableHours?: number;

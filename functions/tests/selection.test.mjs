@@ -75,3 +75,8 @@ test('discards invented or duplicate AI picks and copies facts from the catalog'
   assert.equal(response.picks[0].place, 'Paris, France');
   assert.equal(response.picks[0].listedAt, allowed[0].listedAt);
 });
+
+test('Discover requests retain the broader five-idea mode', () => {
+  const selected = parseScoutRequest({ prompt: 'Find ideas for me', place: 'Toronto, Canada', currency: 'CAD', maxBudget: 100, maxDistanceKm: 25, occasion: 'discover' });
+  assert.equal(selected.occasion, 'discover');
+});

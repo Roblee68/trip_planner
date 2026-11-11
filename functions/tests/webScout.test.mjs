@@ -44,3 +44,11 @@ test('a route search for today also excludes stops dated for another day', () =>
   const result = eligibleWebIdeas({ ideas: [{ ...base, title: 'Tomorrow', eventDate: '2026-11-08' }, base] }, new Set([base.sourceUrl]), request);
   assert.deepEqual(result.map(idea => idea.title), ['Farm tour']);
 });
+
+test('Discover keeps five distinct verified ideas while focused searches keep three', () => {
+  const base = { summary: 'A public activity.', reason: 'Fits interests.', dateText: '', eventDate: '', priceText: '', venue: 'Local venue', address: null };
+  const items = Array.from({ length: 7 }, (_, index) => ({ ...base, title: `Activity ${index + 1}`, sourceUrl: `https://organizer.example/activity-${index + 1}` }));
+  const sources = new Set(items.map(item => item.sourceUrl));
+  assert.equal(eligibleWebIdeas({ ideas: items }, sources, { place: 'Toronto, Canada', occasion: 'discover' }).length, 5);
+  assert.equal(eligibleWebIdeas({ ideas: items }, sources, { place: 'Toronto, Canada', occasion: 'any' }).length, 3);
+});

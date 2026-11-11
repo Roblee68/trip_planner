@@ -26,3 +26,15 @@ export function webIdeaMatches(idea: WebIdea, query: string, category: Category 
   const text = `${idea.title} ${idea.summary} ${idea.venue} ${idea.place} ${idea.reason}`;
   return includesEveryWord(text, query) && fitsCategory(category, '', text);
 }
+
+
+export type WeekInterest = 'All' | 'Dance' | 'Classes' | 'Markets' | 'Music' | 'Theatre' | 'Arts' | 'Outdoors' | 'Food' | 'Sports' | 'Community';
+
+export function weekInterestMatches(event: WeeklyLocalEvent, interest: WeekInterest): boolean {
+  if (interest === 'All') return true;
+  const title = event.title.toLocaleLowerCase();
+  if (interest === 'Dance') return /\b(danc\w*|ballroom|salsa|tango|ballet|swing)\b/.test(title);
+  if (interest === 'Classes') return event.category === 'classes' || /\b(class\w*|workshop\w*|lesson\w*|course\w*)\b/.test(title);
+  if (interest === 'Markets') return event.category === 'markets' || /\bmarket\w*\b/.test(title);
+  return event.category === interest.toLocaleLowerCase();
+}
