@@ -18,7 +18,7 @@ import { planReminders } from './src/reminders';
 import { listenForSourceTaps, phoneAlertsAllowed, requestPhoneAlerts, sendSampleAlert, syncImportedReminders, syncPhoneReminders } from './src/phoneAlerts';
 import { dailyScoutConfigured, getDailyPushToken, saveDailyScoutSubscription } from './src/dailyScout';
 import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/agent';
-import { askRemoteScout, currentScoutGuestId, ensureScoutGuestAuth, firebaseConfig, getScoutAuth, getWeeklyFeaturedAdventures, getWeeklyLocalEvents, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse, type WeeklyLocalResponse, type WeeklyLocalEvent } from './src/remoteScout';
+import { askRemoteScout, getScoutAllowance, type ScoutAllowance, currentScoutGuestId, ensureScoutGuestAuth, firebaseConfig, getScoutAuth, getWeeklyFeaturedAdventures, getWeeklyLocalEvents, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse, type WeeklyLocalResponse, type WeeklyLocalEvent } from './src/remoteScout';
 import { AccountScreen } from './src/AccountScreen';
 import { SettingsIcon } from './src/SettingsIcon';
 import { ArrowIcon, CalendarIcon } from './src/ArrowIcon';
@@ -380,6 +380,13 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
   const [phoneAlertMessage, setPhoneAlertMessage] = useState('');
   const [phoneNotificationsAllowed, setPhoneNotificationsAllowed] = useState<boolean | null>(null);
   const [dailyScoutMessage, setDailyScoutMessage] = useState('');
+  const [scoutAllowance, setScoutAllowance] = useState<ScoutAllowance | null>(null);
+  useEffect(() => {
+    if (!hydrated || tab !== 'Settings' || !remoteScoutConfigured) return;
+    let cancelled = false;
+    void getScoutAllowance().then(value => { if (!cancelled) setScoutAllowance(value); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [hydrated, tab, accountUid]);
   const [locationMessage, setLocationMessage] = useState('');
   const [locationBusy, setLocationBusy] = useState(false);
   const [locationDenied, setLocationDenied] = useState(false);
@@ -542,7 +549,7 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
         setHomeScoutMessage(result.message);
         setHomeScoutCitations(result.citations ?? []);
         lastAutoScoutKey.current = scoutKey;
-        setAutoScoutStatus(result.mode === 'web' ? 'Your scout checked the public web.' : result.mode === 'live' ? 'Your scout checked source-linked ideas.' : 'Your scout found sample ideas.');
+        setAutoScoutStatus(result.mode === 'web' ? 'Your scout checked the public web.' : result.mode === 'live' ? 'Showing source-linked ideas from your area collection.' : 'Your scout found sample ideas.');
       } catch (error) {
         if (!cancelled && requestId === homeRequestId.current) setAutoScoutStatus(error instanceof Error ? `Live scout needs another try: ${error.message}` : 'Live scout needs another try.');
       } finally { homeScoutBusy.current = false; if (requestId === homeRequestId.current) setHomeLoading(false); }
@@ -579,7 +586,7 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
   const organicItems = diverse;
   const weeklyPicks: FeaturedDestination[] = weeklyFeatured?.adventures ?? [];
   const visibleFeatured = [...weeklyPicks, ...featuredDestinations.filter(destination => !weeklyPicks.some(pick => pick.sourceUrl === destination.sourceUrl))].slice(0, 3);
-  const weeklyToday = localDateKey();
+  const weeklyToday = localDateKey(new Date(), weeklyLocalFeed?.timeZone);
   const weeklyEnd = addDaysToDateKey(weeklyToday, 6);
   const weeklyAll = visibleWeeklyLocalEvents(weeklyLocalFeed?.events ?? [], weeklyToday);
   const weekDates = Array.from({ length: 7 }, (_, index) => addDaysToDateKey(weeklyToday, index));
@@ -903,7 +910,7 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
       setHomeWebIdeas((result.ideas ?? []).filter(idea => feedback[idea.id] !== 'pass'));
       setHomeScoutMessage(result.message);
       setHomeScoutCitations(result.citations ?? []);
-      setAutoScoutStatus(result.mode === 'web' ? 'Your scout checked the public web.' : result.mode === 'live' ? 'Your scout checked source-linked ideas.' : 'Your scout found sample ideas.');
+      setAutoScoutStatus(result.mode === 'web' ? 'Your scout checked the public web.' : result.mode === 'live' ? 'Showing source-linked ideas from your area collection.' : 'Your scout found sample ideas.');
       lastAutoScoutKey.current = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes]);
     } catch (error) {
       if (requestId === homeRequestId.current) { setHomeScoutMessage(error instanceof Error ? `The scout is unavailable: ${error.message}` : 'The scout is unavailable. Please try again.'); setAutoScoutStatus('Live scout needs another try.'); }
@@ -1070,7 +1077,7 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
         <Action label={savedIds.includes(selected.id) ? 'Remove from saved' : 'Save for later'} onPress={() => toggleSaved(selected)} />
       </View> : tab === 'Discover' ? <View>
         <View style={styles.homeIntro}><View style={styles.homeIntroText}><Text style={styles.sectionKicker}>LOCAL INSPIRATION</Text><Text style={styles.homeTitle}>{`${preferences.place.split(',')[0].trim() || 'Local'} ideas.`}</Text></View><Pressable onPress={() => setTab('Settings')} style={styles.placeButton}><Text style={styles.placeButtonText}>⌖  Change place</Text></Pressable></View>
-        <Text style={styles.homeLead}>Your scout checks current public sources near {preferences.place}. Choose how you want to explore.</Text>
+        <Text style={styles.homeLead}>Explore collected events near {preferences.place}. Choose how you want to explore.</Text>
         <View style={styles.discoverChoices}>
           {([
             ['for-you', 'For you'],
@@ -1085,7 +1092,7 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
         </View>
         {discoverMode === 'for-you' && <View>
           <View style={styles.rowBetween}><Text style={styles.subheading}>{homeLoading ? 'Finding up to 5 ideas' : homeWebIdeas.length ? `${homeWebIdeas.length} ideas for you` : 'Found for you'}</Text><Action label={homeLoading ? 'Checking…' : 'Refresh ideas'} onPress={() => { if (!homeLoading) void runHomeScout(); }} secondary small /></View>
-          {homeLoading && <Text style={styles.notice}>Checking current public sources near {preferences.place}…</Text>}
+          {homeLoading && <Text style={styles.notice}>Finding collected events near {preferences.place}…</Text>}
           {!homeLoading && autoScoutStatus ? <Text style={styles.scoutStatus}>✦  {autoScoutStatus}</Text> : null}
           {homeWebIdeas.length ? <><Text style={styles.webIntro}>{homeScoutMessage}</Text>{homeWebIdeas.map(idea => webIdeaCard(idea))}</> : homeScoutCitations.length ? <CitedScoutText message={homeScoutMessage} citations={homeScoutCitations} /> : !homeLoading && homeScoutMessage ? <Text style={styles.notice}>{weeklyAll.length && homeScoutMessage.startsWith('I could not find a source-linked activity') ? `No personalized picks matched this search. The Week tab has ${weeklyAll.length} source-linked ${weeklyAll.length === 1 ? 'event' : 'events'} to browse.` : homeScoutMessage}</Text> : null}
           {!homeLoading && !homeWebIdeas.length && weeklyAll.length > 0 && <Action label={`See ${weeklyAll.length} events this week`} onPress={() => setTab('This Week')} secondary small />}
@@ -1123,7 +1130,7 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
         {discoverMode === 'further' && <View>
           <Pressable onPress={() => { setDiscoverMode('for-you'); setDiscoverWide(false); }} style={styles.lookFurther} accessibilityRole="button"><ArrowIcon direction="left" color={sea} /><View style={styles.lookFurtherCopy}><Text style={styles.lookFurtherTitle}>Back to nearby</Text><Text style={styles.lookFurtherDetail}>Return to your usual {formatDistance(preferences.maxDistanceKm, preferences.distanceUnit)} range.</Text></View></Pressable>
           <Text style={styles.lead}>Looking up to about {formatDistance(furtherRadiusKm, preferences.distanceUnit)} from {preferences.place.split(',')[0].trim() || 'your city'}.</Text>
-          {wideLoading ? <Text style={styles.notice}>Checking public sources in nearby towns…</Text> : wideWebIdeas.length ? <><Text style={styles.webIntro}>{wideScoutMessage}</Text>{wideWebIdeas.map(idea => webIdeaCard(idea))}</> : wideScoutMessage ? <View style={styles.empty}><Text style={styles.emptyTitle}>No wider match yet.</Text><Text style={styles.summary}>{wideScoutMessage}</Text></View> : null}
+          {wideLoading ? <Text style={styles.notice}>Looking through collected listings…</Text> : wideWebIdeas.length ? <><Text style={styles.webIntro}>{wideScoutMessage}</Text>{wideWebIdeas.map(idea => webIdeaCard(idea))}</> : wideScoutMessage ? <View style={styles.empty}><Text style={styles.emptyTitle}>No wider match yet.</Text><Text style={styles.summary}>{wideScoutMessage}</Text></View> : null}
           {!wideLoading && <Action label="Search farther again" onPress={() => { void runWideScout(); }} secondary small />}
         </View>}
         {discoverMode === 'serendipity' && <View>
@@ -1163,12 +1170,12 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
           <Text style={styles.weekFooter}>{weeklyLocalFeed?.checkedAt ? `List searched ${new Date(weeklyLocalFeed.checkedAt).toLocaleDateString()}. ` : ''}Events can change or sell out. Check each organizer’s page before going.</Text>
         </View>
       </View> : tab === 'Now' ? <View>
-        <Text style={styles.sectionKicker}>SPONTANEOUS</Text><Text style={styles.h1}>What can I do today?</Text><Text style={styles.lead}>Your scout looks for source-linked ideas near {preferences.place} that fit the time you have, your interests and your budget.</Text>
+        <Text style={styles.sectionKicker}>SPONTANEOUS</Text><Text style={styles.h1}>What can I do today?</Text><Text style={styles.lead}>Explore source-linked events near {preferences.place} for today. Check unlisted prices, opening times and travel time with the organizer.</Text>
         <Text style={styles.label}>Time available, including travel</Text><View style={styles.chipRow}>{[1, 2, 3, 5].map(value => <Pill key={value} label={`${value} hr`} active={timeHours === value} onPress={() => { nowRequestId.current += 1; setTimeHours(value); setNowIdeas([]); setNowMessage(''); setNowLoading(false); }} />)}</View>
         <Text style={styles.label}>What sounds good right now?</Text><View style={styles.chipRow}>{nowFocuses.map(value => <Pill key={value} label={value} active={nowFocus === value} onPress={() => { nowRequestId.current += 1; setNowFocus(value); setNowIdeas([]); setNowMessage(''); setNowLoading(false); }} />)}</View>
         <Text style={styles.label}>Today’s budget ({preferences.currency})</Text><TextInput value={nowBudgetText} onChangeText={value => { nowRequestId.current += 1; setNowBudgetText(value.replace(/[^0-9]/g, '').slice(0, 5)); setNowIdeas([]); setNowMessage(''); setNowLoading(false); }} keyboardType="number-pad" placeholder="0 for free" placeholderTextColor="#6C8285" style={styles.nowBudgetInput} accessibilityLabel={`Today's budget in ${preferences.currency}`} />
         <Action label={nowLoading ? 'Looking for today…' : `Find ideas for ${timeHours} hr today`} onPress={() => { if (!nowLoading) void runNowScout(timeHours); }} />
-        {nowLoading ? <Text style={styles.notice}>Checking public sources for today’s possibilities…</Text> : nowIdeas.length ? <><Text style={styles.webIntro}>{nowMessage}</Text>{nowIdeas.map(idea => webIdeaCard(idea))}</> : nowMessage ? <View style={styles.empty}><Text style={styles.emptyTitle}>{nowMessage.startsWith('No source-linked') ? 'No match for today yet.' : 'Today’s scout needs another try.'}</Text><Text style={styles.summary}>{nowMessage}</Text><Text style={styles.helper}>Try more time or a wider travel radius in Settings.</Text></View> : null}
+        {nowLoading ? <Text style={styles.notice}>Finding collected events for today…</Text> : nowIdeas.length ? <><Text style={styles.webIntro}>{nowMessage}</Text>{nowIdeas.map(idea => webIdeaCard(idea))}</> : nowMessage ? <View style={styles.empty}><Text style={styles.emptyTitle}>{nowMessage.startsWith('No source-linked') ? 'No match for today yet.' : 'Today’s scout needs another try.'}</Text><Text style={styles.summary}>{nowMessage}</Text><Text style={styles.helper}>Try more time or a wider travel radius in Settings.</Text></View> : null}
         <Text style={styles.footerNote}>Check the organizer’s site before leaving. Hours, availability, weather and prices can change.</Text>
       </View> : tab === 'Along the Way' ? <View>
         <Text style={styles.sectionKicker}>A LITTLE DETOUR</Text><Text style={styles.h1}>One good stop on the way.</Text><Text style={styles.lead}>Your scout can look between {preferences.place} and your destination. Tell it how you want to travel.</Text>
@@ -1236,6 +1243,9 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
           <Text style={styles.accountEntryTitle}>{getScoutAuth().currentUser && !getScoutAuth().currentUser!.isAnonymous ? 'Manage your account' : 'Create an account or sign in'}</Text>
           <Text style={styles.accountEntryDetail}>{getScoutAuth().currentUser && !getScoutAuth().currentUser!.isAnonymous ? 'View sign-in and account deletion options →' : Platform.OS === 'android' ? 'Use Google or email and password →' : 'Use Apple or email and password →'}</Text>
         </Pressable>}
+        <Text style={styles.subheading}>Daily AI allowance</Text>
+        <Text style={styles.helper}>{scoutAllowance ? `${scoutAllowance.remaining} of ${scoutAllowance.limit} AI actions remaining. Resets ${new Date(scoutAllowance.resetsAt).toLocaleString()}.` : 'Five AI actions per account or guest session each day.'} Route research and reading shared finds use this allowance. Browsing and filtering collected events do not.</Text>
+        {scoutAllowance && !scoutAllowance.available && <Text style={styles.notice}>The shared AI allowance has been reached for today. Collected events remain available.</Text>}
         <Text style={styles.subheading}>Exploring</Text>
         <Action label={locationBusy ? 'Finding nearby city…' : 'Use my current location'} onPress={() => { if (!locationBusy) void useCurrentLocation(); }} secondary />
         {locationDenied && <Action label="Open phone location settings" onPress={() => { void Linking.openSettings(); }} secondary />}
@@ -1261,7 +1271,7 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
         {phoneAlertMessage ? <Text style={styles.notice}>{phoneAlertMessage}</Text> : null}
         <Setting label="Daily scout" value={preferences.dailyScoutEnabled} onPress={() => { void toggleDailyScout(); }} />
         <Text style={styles.helper}>Weekend ideas and sign-up deadlines</Text>
-        <Text style={styles.helper}>{dailyScoutConfigured ? 'With your permission, the web scout checks each morning and sends at most two possible matches with source links.' : 'Daily web alerts are being built. This preview cannot send new finds while the app is closed yet.'}</Text>
+        <Text style={styles.helper}>{dailyScoutConfigured ? 'With your permission, we check the shared event collection each morning and send at most two possible matches with source links.' : 'Daily web alerts are being built. This preview cannot send new finds while the app is closed yet.'}</Text>
         {dailyScoutMessage ? <Text style={styles.notice}>{dailyScoutMessage}</Text> : null}
         <Text style={styles.subheading}>Interests</Text><View style={styles.chipRow}>{categories.map(value => <Pill key={value} label={value} active={preferences.interests.includes(value)} onPress={() => toggleInterest(value)} />)}</View>
         <Pressable onPress={() => setTopicsOpen(value => !value)} style={styles.searchToggle}><Text style={styles.searchToggleText}>Specific interests · {preferences.topics.length} selected</Text><Text style={styles.searchChevron}>{topicsOpen ? '−' : '+'}</Text></Pressable>

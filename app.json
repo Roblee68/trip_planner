@@ -10,14 +10,14 @@
     "ios": {
       "icon": "./assets/detours-app-icon-teal.png",
       "usesAppleSignIn": true,
-      "buildNumber": "2",
+      "buildNumber": "3",
       "supportsTablet": true,
       "bundleIdentifier": "com.roblee.pbandb",
       "deploymentTarget": "16.4"
     },
     "android": {
       "icon": "./assets/detours-app-icon-teal.png",
-      "versionCode": 2,
+      "versionCode": 3,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.SYSTEM_ALERT_WINDOW"

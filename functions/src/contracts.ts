@@ -68,6 +68,9 @@ export type ScoutPick = {
 };
 
 export type WebIdea = {
+  timeZone?: string;
+  startsAt?: string | null;
+  endsAt?: string | null;
   id: string;
   title: string;
   summary: string;

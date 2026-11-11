@@ -48,11 +48,11 @@ type Pick = {
   mode: 'sample' | 'live'; reason: string;
 };
 export type ScoutCitation = { startIndex: number; endIndex: number; url: string; title: string };
-export type WebIdea = { id: string; title: string; summary: string; reason: string; dateText: string; eventDate?: string; priceText: string; venue: string; address: string | null; place: string; sourceUrl: string; foundAt: string };
+export type WebIdea = { timeZone?: string; startsAt?: string | null; endsAt?: string | null; id: string; title: string; summary: string; reason: string; dateText: string; eventDate?: string; priceText: string; venue: string; address: string | null; place: string; sourceUrl: string; foundAt: string };
 export type WeeklyFeaturedAdventure = { id: string; title: string; summary: string; place: string; timing: string; price: string; sourceUrl: string; sourceName: string; imageUrl: string };
 export type WeeklyFeaturedResponse = { adventures: WeeklyFeaturedAdventure[]; checkedAt: string | null; expiresAt: string | null; refreshing?: boolean };
 export type WeeklyLocalEvent = { id: string; title: string; eventDate: string; eventTime: string; category: 'classes' | 'outdoors' | 'theatre' | 'music' | 'community' | 'arts' | 'food' | 'sports' | 'markets' | 'other'; place: string; sourceUrl: string; sourceName: string; imageUrl?: string };
-export type WeeklyLocalResponse = { place: string; events: WeeklyLocalEvent[]; checkedAt: string | null; expiresAt: string | null; refreshing?: boolean };
+export type WeeklyLocalResponse = { timeZone?: string; place: string; events: WeeklyLocalEvent[]; checkedAt: string | null; expiresAt: string | null; refreshing?: boolean };
 type ScoutResponse = { message: string; picks: Pick[]; followUp: string | null; mode: 'sample' | 'live' | 'web'; citations?: ScoutCitation[]; ideas?: WebIdea[] };
 
 export function pickToExperience(pick: Pick): Experience {
@@ -67,6 +67,13 @@ export function pickToExperience(pick: Pick): Experience {
 }
 
 export type RouteSearch = { destination: string; style: 'highway' | 'towns' | 'either'; via: string; detourMinutes: number; timing: 'today' | 'weekend' | 'flexible' };
+export type ScoutAllowance = { limit: number; remaining: number; resetsAt: string; available: boolean };
+export async function getScoutAllowance(): Promise<ScoutAllowance> {
+  const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  await ensureScoutGuestAuth(getScoutAuth());
+  const call = httpsCallable<{mode: string},ScoutAllowance>(getFunctions(app,'northamerica-northeast2'),'suggestExperiences');
+  return (await call({mode:'allowance'})).data;
+}
 export async function askRemoteScout(prompt: string, preferences: Preferences, refinement: 'balanced' | 'different' | 'cheaper' | 'closer', todayHours?: number, route?: RouteSearch, surprise = false, likedExamples: string[] = [], discover = false): Promise<ScoutResponse> {
   if (!remoteScoutConfigured) throw new Error('The agent connection is not configured on this device.');
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);

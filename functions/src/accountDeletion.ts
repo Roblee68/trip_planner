@@ -20,6 +20,8 @@ export const deleteAccount = onCall({
   const db = getFirestore();
   await db.collection('scoutSubscriptions').doc(uid).delete();
   await deleteMatchingDocuments(db.collection('scoutNotifications').where('uid', '==', uid));
+  await deleteMatchingDocuments(db.collection('routeScoutCache').where('uid', '==', uid));
+  await deleteMatchingDocuments(db.collection('catalogueUsage').orderBy(FieldPath.documentId()).startAt(`cities_${uid}_`).endAt(`cities_${uid}_\uf8ff`));
   for (const prefix of [`${uid}_`, `weeklyLocal_${uid}_`]) {
     await deleteMatchingDocuments(db.collection('agentUsage').orderBy(FieldPath.documentId()).startAt(prefix).endAt(`${prefix}\uf8ff`));
   }

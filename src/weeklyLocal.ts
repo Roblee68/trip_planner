@@ -1,6 +1,13 @@
 import type { WeeklyLocalEvent } from './remoteScout';
 
-export function localDateKey(date = new Date()): string {
+export function localDateKey(date = new Date(), timeZone?: string): string {
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+      const value = (type: string) => parts.find(part => part.type === type)?.value ?? '';
+      return `${value('year')}-${value('month')}-${value('day')}`;
+    } catch { /* Older stored feeds use the device calendar until refreshed. */ }
+  }
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 

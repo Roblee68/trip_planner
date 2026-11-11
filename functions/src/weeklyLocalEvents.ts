@@ -135,7 +135,7 @@ async function searchWeeklyLocalEvents(place: string, now: Date): Promise<Weekly
   const through = new Date(now.getTime() + 8 * DAY).toISOString().slice(0, 10);
   const searches = await Promise.allSettled(focuses.map(async focus => {
     const response = await new OpenAI().responses.create({
-      model: process.env.PBB_WEB_MODEL || 'gpt-6.1-sol',
+      model: process.env.PBB_WEB_MODEL || 'gpt-6-luna',
       tools: [{ type: 'web_search', search_context_size: 'medium' }], tool_choice: 'required',
       include: ['web_search_call.action.sources'], max_tool_calls: 6, max_output_tokens: 3000, store: false,
       text: { format: { type: 'json_schema', name: 'weekly_local_event_list', strict: true, schema } },
