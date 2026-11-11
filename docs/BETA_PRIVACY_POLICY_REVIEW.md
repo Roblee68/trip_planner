@@ -20,9 +20,9 @@ When you request a live search, PB&B sends the details needed for that request t
 
 If you tap **Use my current location**, the app asks for foreground location permission and uses the phone's location service to resolve your position to a nearby city and country. PB&B uses that place for searches. The app does not continuously track your location or store a location history. You can enter a place manually and decline location permission.
 
-## Guest identity, alerts, and service records
+## Guest identity, optional accounts, alerts, and service records
 
-Firebase creates an anonymous guest identifier so the app can call the service and enforce search limits. The service keeps usage counts tied to that identifier. It also keeps shared area event caches, which are refreshed periodically.
+Firebase creates an anonymous guest identifier so the app can call the service and enforce search limits. You can optionally create an account with an email address and password or use Sign in with Apple on iPhone. Firebase handles account credentials and may receive your email address or an Apple relay address. PB&B does not store your password. If you turn a guest identity into an account, its identifier is retained. The service keeps usage counts tied to that identifier. It also keeps shared area event caches, which are refreshed periodically. Saved ideas stay on the phone and are not synchronized across devices.
 
 If you turn on daily scout alerts, PB&B stores your chosen place, currency, budget, travel radius and modes, interests, time zone, and push token with your guest identifier. It uses those details to look for possible matches and sends alert text and your push token through Expo's push service. It keeps delivery records so it can avoid duplicate alerts and check delivery status. Turning daily alerts off removes the active alert subscription. You can decline notification permission.
 
@@ -30,7 +30,7 @@ Our cloud services may also receive technical data needed to operate the app, su
 
 ## Providers and external sites
 
-PB&B uses Google Firebase for guest authentication, cloud functions, data storage, and search limits; OpenAI to process live searches and selected screenshots or links; and Expo to deliver optional push notifications. These providers may process information outside your country. The PB&B cloud functions are deployed in Toronto, Canada; that does not mean every provider processes data only in Canada.
+PB&B uses Google Firebase for guest and optional account authentication, cloud functions, data storage, and search limits; Apple for Sign in with Apple when chosen; OpenAI to process live searches and selected screenshots or links; and Expo to deliver optional push notifications. These providers may process information outside your country. The PB&B cloud functions are deployed in Toronto, Canada; that does not mean every provider processes data only in Canada.
 
 Each event card links to an organizer or other source. Opening a source takes you to that site's own service and privacy practices. PB&B does not control those sites or guarantee that an event remains available.
 
@@ -42,7 +42,7 @@ The beta has no third-party advertising tracker and does not sell individual use
 
 Saved items and screenshots remain on your phone until you remove them or uninstall the app. Shared area event caches are refreshed on a weekly schedule, though old cache records may remain in storage until deleted. The beta currently has no automatic deletion period for usage counts and notification delivery records. We retain those service records while needed for the beta's limits, alert delivery, security, and troubleshooting, and remove them when no longer needed or when a valid deletion request is completed. An active daily-alert subscription remains until you turn it off or it is removed because its push token no longer works.
 
-To ask for access to or deletion of server-side information associated with your guest identity, email **hello@myomesh.ca**. We may need an identifier from your app to find the correct guest record and verify that the request is yours. Uninstalling the app deletes its local data but does not by itself delete server-side records. Some service records may need to be retained for security or legal reasons; we will explain any exception in our reply.
+If you created an account, open **Settings → Account → Delete account and data** to delete the account, its service usage records and alert subscription, and its saved items on this device. If you use PB&B as a guest, or need help with a data request, email **hello@myomesh.ca**. We may need an identifier from your app to find the correct guest record and verify that the request is yours. Uninstalling the app deletes its local data but does not by itself delete server-side records. Some service records may need to be retained for security or legal reasons; we will explain any exception in our reply.
 
 ## Security, children, and changes
 

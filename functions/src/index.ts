@@ -10,6 +10,7 @@ import { parseImportScanInput, scanImportedFind } from './importScan.js';
 import { dailyOpportunityScan, saveDailyScout } from './dailyService.js';
 import { weeklyFeaturedAdventures } from './featuredAdventures.js';
 import { parseWeeklyLocalPlace, weeklyLocalEvents } from './weeklyLocalEvents.js';
+export { deleteAccount } from './accountDeletion.js';
 
 initializeApp();
 const openaiApiKey = defineSecret('OPENAI_API_KEY');

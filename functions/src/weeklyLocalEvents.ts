@@ -95,15 +95,33 @@ export function eligibleWeeklyLocalEvents(raw: unknown, searched: Set<string>, p
 
 async function addSourceImages(events: WeeklyLocalEvent[]): Promise<WeeklyLocalEvent[]> {
   const urls = [...new Set(events.map(event => event.sourceUrl))];
+  const blocked = await blockedImageSources(urls);
   const images = new Map<string, string>();
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(6, urls.length) }, async () => {
     while (next < urls.length) {
       const url = urls[next++];
-      images.set(url, await sourcePreviewImageUrl(url));
+      images.set(url, blocked.has(url) ? '' : await sourcePreviewImageUrl(url));
     }
   }));
   return events.map(event => ({ ...event, imageUrl: images.get(event.sourceUrl) ?? '' }));
+}
+
+export function blockedImageSourceKey(sourceUrl: string): string {
+  return createHash('sha256').update(sourceUrl).digest('hex');
+}
+
+async function blockedImageSources(urls: string[]): Promise<Set<string>> {
+  if (!urls.length) return new Set();
+  const refs = urls.map(url => getFirestore().collection('blockedImageSources').doc(blockedImageSourceKey(url)));
+  const docs = await getFirestore().getAll(...refs);
+  return new Set(docs.flatMap((doc, index) => doc.exists ? [urls[index]] : []));
+}
+
+async function hideBlockedImages(feed: WeeklyLocalFeed): Promise<WeeklyLocalFeed> {
+  const withImages = feed.events.filter(event => event.imageUrl);
+  const blocked = await blockedImageSources([...new Set(withImages.map(event => event.sourceUrl))]);
+  return blocked.size ? { ...feed, events: feed.events.map(event => blocked.has(event.sourceUrl) ? { ...event, imageUrl: '' } : event) } : feed;
 }
 
 async function searchWeeklyLocalEvents(place: string, now: Date): Promise<WeeklyLocalEvent[]> {
@@ -151,22 +169,22 @@ export async function weeklyLocalEvents(place: string, uid: string, now = new Da
     transaction.set(ref, { place, refreshingUntil: new Date(now.getTime() + 3 * 60_000).toISOString() }, { merge: true });
     return { kind: 'refresh' as const, cached };
   });
-  if (claim.kind === 'cached') return claim.cached;
-  if (claim.kind === 'waiting') return { ...claim.cached, refreshing: true };
-  if (claim.kind === 'images-waiting') return { ...claim.cached, refreshing: true };
+  if (claim.kind === 'cached') return hideBlockedImages(claim.cached);
+  if (claim.kind === 'waiting') return hideBlockedImages({ ...claim.cached, refreshing: true });
+  if (claim.kind === 'images-waiting') return hideBlockedImages({ ...claim.cached, refreshing: true });
   if (claim.kind === 'images') {
     const events = await addSourceImages(claim.cached.events);
     await ref.set({ events, imageCheckedAt: now.toISOString(), refreshingImagesUntil: null }, { merge: true });
-    return { ...claim.cached, events };
+    return hideBlockedImages({ ...claim.cached, events });
   }
   try {
     const events = await addSourceImages(await searchWeeklyLocalEvents(place, now));
     const result: WeeklyLocalFeed = { place, events, checkedAt: now.toISOString(), expiresAt: new Date(now.getTime() + WEEK).toISOString() };
     await ref.set({ ...result, imageCheckedAt: now.toISOString(), refreshingImagesUntil: null, refreshingUntil: null, retryAfter: null });
-    return result;
+    return hideBlockedImages(result);
   } catch (error) {
     await ref.set({ refreshingUntil: null, retryAfter: new Date(now.getTime() + RETRY).toISOString() }, { merge: true });
-    if (claim.cached.events.length) return claim.cached;
+    if (claim.cached.events.length) return hideBlockedImages(claim.cached);
     throw error;
   }
 }

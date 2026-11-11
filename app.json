@@ -9,6 +9,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/detours-app-icon-teal.png",
+      "usesAppleSignIn": true,
       "buildNumber": "2",
       "supportsTablet": true,
       "bundleIdentifier": "com.roblee.pbandb",
@@ -36,6 +37,7 @@
         }
       ],
       "./plugins/withPodMinimum",
+      "expo-apple-authentication",
       "expo-status-bar",
       [
         "expo-location",

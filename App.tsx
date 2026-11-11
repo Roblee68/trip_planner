@@ -5,6 +5,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useIncomingShare } from 'expo-sharing';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { onAuthStateChanged, type User } from 'firebase/auth';
 import { Alert, AppState, Image, ImageBackground, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { categories, daysUntil, defaultPreferences, interestTopics, matchedTopics, money, namedInterestSuggestions, normalizeTopics, opportunityAlerts, rankExperiences, topicGroups, travelModeLabels, travelModes, type Category, type Experience, type Feedback, type Preferences, type InterestTopic, type TravelMode } from './src/logic';
@@ -17,7 +18,9 @@ import { planReminders } from './src/reminders';
 import { listenForSourceTaps, phoneAlertsAllowed, requestPhoneAlerts, sendSampleAlert, syncImportedReminders, syncPhoneReminders } from './src/phoneAlerts';
 import { dailyScoutConfigured, getDailyPushToken, saveDailyScoutSubscription } from './src/dailyScout';
 import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/agent';
-import { askRemoteScout, currentScoutGuestId, getWeeklyFeaturedAdventures, getWeeklyLocalEvents, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse, type WeeklyLocalResponse, type WeeklyLocalEvent } from './src/remoteScout';
+import { askRemoteScout, currentScoutGuestId, ensureScoutGuestAuth, firebaseConfig, getScoutAuth, getWeeklyFeaturedAdventures, getWeeklyLocalEvents, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse, type WeeklyLocalResponse, type WeeklyLocalEvent } from './src/remoteScout';
+import { AccountScreen } from './src/AccountScreen';
+import { localStateKey, mergeGuestLocalState } from './src/account';
 import { findMentionsArea, localInputParts, mergeSelectedFinds, nextLocalMorning, orderFindsForArea, parseLocalDate, parseLocalDateTime, reminderSuggestion, safeSourceUrl, type ExtractedFind, type ImportedFind } from './src/importedFinds';
 import { addImportedFindToCalendar, keepImportedScreenshot, prepareImageForScan, removeImportedScreenshot } from './src/importActions';
 import { addDaysToDateKey, localDateKey, visibleWeeklyLocalEvents } from './src/weeklyLocal';
@@ -190,7 +193,31 @@ function Card({ item, saved, loved, distanceUnit, onOpen, onSave, onLove, onPass
 }
 
 export default function App() {
+  const [accountUid, setAccountUid] = useState<string | null>(null);
+  const previousUser = useRef<User | null>(null);
+  useEffect(() => {
+    if (!Object.values(firebaseConfig).every(Boolean)) { setAccountUid('local'); return; }
+    const auth = getScoutAuth();
+    const unsubscribe = onAuthStateChanged(auth, user => {
+      const previous = previousUser.current;
+      previousUser.current = user;
+      if (user) {
+        if (previous?.isAnonymous && !user.isAnonymous && previous.uid !== user.uid) {
+          setAccountUid(null);
+          void mergeGuestLocalState(previous.uid, user.uid).catch(() => {}).finally(() => setAccountUid(user.uid));
+        } else setAccountUid(user.uid);
+      }
+      else void ensureScoutGuestAuth(auth).catch(() => setAccountUid('local'));
+    }, () => setAccountUid('local'));
+    return unsubscribe;
+  }, []);
+  if (!accountUid) return <SafeAreaView style={styles.safe}><View style={styles.loading}><Text style={styles.brand}>PB&B ✦</Text><Text style={styles.lead}>Getting your ideas ready…</Text></View></SafeAreaView>;
+  return <AppContent key={accountUid} accountUid={accountUid} />;
+}
+
+function AppContent({ accountUid }: { accountUid: string }) {
   const [tab, setTab] = useState<Tab>('Discover');
+  const [accountOpen, setAccountOpen] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
   const [feedback, setFeedback] = useState<Feedback>({});
   const [savedIds, setSavedIds] = useState<string[]>([]);
@@ -298,7 +325,13 @@ export default function App() {
   const savedRequestId = useRef(0);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then(raw => {
+    const key = localStateKey(accountUid);
+    AsyncStorage.getItem(key).then(async current => {
+      const raw = current ?? await AsyncStorage.getItem(STORAGE_KEY);
+      if (!current && raw) {
+        await AsyncStorage.setItem(key, raw);
+        await AsyncStorage.removeItem(STORAGE_KEY);
+      }
       if (raw) {
         const saved = JSON.parse(raw) as Partial<StoredState>;
         if (saved.preferences) setPreferences({ ...defaultPreferences, ...saved.preferences, interests: Array.isArray(saved.preferences.interests) ? saved.preferences.interests : defaultPreferences.interests, topics: normalizeTopics(saved.preferences.topics), travelModes: Array.isArray(saved.preferences.travelModes) ? saved.preferences.travelModes : defaultPreferences.travelModes, distanceUnit: saved.preferences.distanceUnit === 'mi' ? 'mi' : 'km', place: saved.preferences.place || 'Toronto, Canada' });
@@ -311,10 +344,10 @@ export default function App() {
         if (Array.isArray(saved.importedFinds)) setImportedFinds(saved.importedFinds.filter(find => find && typeof find.id === 'string' && typeof find.title === 'string').slice(0, 100));
       }
     }).catch(() => {}).finally(() => setHydrated(true));
-  }, []);
+  }, [accountUid]);
   useEffect(() => {
-    if (hydrated) AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ preferences, feedback, savedIds, savedItems, savedWebIdeas, importedFinds, likedExamples })).catch(() => {});
-  }, [preferences, feedback, savedIds, savedItems, savedWebIdeas, importedFinds, likedExamples, hydrated]);
+    if (hydrated) AsyncStorage.setItem(localStateKey(accountUid), JSON.stringify({ preferences, feedback, savedIds, savedItems, savedWebIdeas, importedFinds, likedExamples })).catch(() => {});
+  }, [preferences, feedback, savedIds, savedItems, savedWebIdeas, importedFinds, likedExamples, hydrated, accountUid]);
   useEffect(() => {
     if (!hydrated) return;
     let cancelled = false;
@@ -908,6 +941,7 @@ export default function App() {
   };
 
   if (!hydrated) return <SafeAreaView style={styles.safe}><View style={styles.loading}><Text style={styles.brand}>PB&B ✦</Text><Text style={styles.lead}>Getting your ideas ready…</Text></View></SafeAreaView>;
+  if (accountOpen) return <SafeAreaView style={styles.safe}><StatusBar style="dark" /><AccountScreen onClose={() => setAccountOpen(false)} /></SafeAreaView>;
   return <SafeAreaView style={styles.safe}><StatusBar style="dark" />
     <IncomingShareBoundary><IncomingShare onReceive={receiveShare} /></IncomingShareBoundary>
     <View style={styles.header}><View style={styles.brandRow}><Image source={require('./assets/pbb-mountain-mark.png')} style={styles.brandMark} accessibilityLabel="PB&B mountain explorer taking a photo" /><View style={styles.brandInfo}><Text style={styles.brand}>PB&B</Text><Text style={styles.brandSub} numberOfLines={1}>Exploring {preferences.place || 'anywhere'}</Text></View></View><Pressable onPress={() => setTab('Settings')} style={styles.settingsButton} accessibilityRole="button" accessibilityLabel="Open settings"><Text style={styles.settingsButtonText}>⚙  Settings</Text></Pressable></View>
@@ -1103,6 +1137,8 @@ export default function App() {
         <Text style={styles.subheading}>Timely finds</Text>
         {alerts.length ? alerts.map(alert => <Pressable key={alert.item.id} onPress={() => setSelected(alert.item)} style={styles.alertCard}><Text style={styles.alertTag}>✦ {alert.reason}</Text><Text style={styles.alertTitle}>{alert.item.title}</Text><Text style={styles.cardMeta}>Starts {formatDate(alert.item.startsAt)} · {money(alert.item.totalCost, alert.item.currency)} · {formatDistance(alert.item.distanceKm, preferences.distanceUnit)}</Text><Text style={styles.alertLink}>See details →</Text></Pressable>) : <View style={styles.empty}><Text style={styles.emptyTitle}>No timely finds right now.</Text><Text style={styles.summary}>Enable alerts and choose interests to see matching sample opportunities.</Text></View>}
         <Text style={styles.notice}>Check each listing source and confirm details with the organizer before leaving. Events can fill, sell out, close due to weather, or change unexpectedly. AI can make mistakes. Opt-in phone reminders work for recently checked live listings already found by the app; new finds while the app is closed need a push service.</Text>
+        {Object.values(firebaseConfig).every(Boolean) && <Action label="Account: sign in or delete" onPress={() => setAccountOpen(true)} secondary />}
+        <Action label="Report an image or listing ↗" onPress={() => { void Linking.openURL('mailto:hello@myomesh.ca?subject=PB%26B%20image%20or%20listing%20report'); }} secondary />
         <Action label="Privacy policy ↗" onPress={() => { void Linking.openURL(PRIVACY_POLICY_URL); }} secondary />
         {currentScoutGuestId() ? <Text style={styles.helper} selectable>Privacy request ID: {currentScoutGuestId()}. Include this ID if you email us about deleting service records.</Text> : null}
         <Action label="Clear passes and loves" onPress={() => setFeedback({})} secondary />
