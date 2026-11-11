@@ -39,6 +39,33 @@ const FEATURED_STORAGE_KEY = 'pbb-weekly-featured-v2';
 const WEEKLY_LOCAL_STORAGE_PREFIX = 'pbb-weekly-local-v1-';
 const PRIVACY_POLICY_URL = 'https://tripplanner-910da.web.app/privacy';
 const tabs: Tab[] = ['Discover', 'This Week', 'Now', 'Along the Way', 'Saved', 'Settings'];
+const tabBanners: Record<Tab, { image: number; kicker: string; title: string }> = {
+  Discover: { image: require('./assets/original-photo-library/beginner-partner-dance.png'), kicker: 'MAKE A STORY OF IT', title: 'Find the\nunexpected.' },
+  'This Week': { image: require('./assets/original-photo-library/farmers-market.png'), kicker: 'SEVEN DAYS AHEAD', title: 'Make room\nfor this week.' },
+  Now: { image: require('./assets/original-photo-library/local-live-music.png'), kicker: 'RIGHT NOW', title: 'Make today\ninteresting.' },
+  'Along the Way': { image: require('./assets/original-photo-library/lakeside-hiking-adventure.png'), kicker: 'A LITTLE DETOUR', title: 'Take the\nscenic turn.' },
+  Saved: { image: require('./assets/original-photo-library/pottery-workshop.png'), kicker: 'YOUR SHORTLIST', title: 'Keep the\ngood ideas.' },
+  Settings: { image: require('./assets/original-photo-library/neighbourhood-festival.png'), kicker: 'MAKE IT YOURS', title: 'Make it\nyours.' },
+};
+
+function TabBanner({ tab }: { tab: Tab }) {
+  const banner = tabBanners[tab];
+  return <ImageBackground source={banner.image} style={styles.heroImage} imageStyle={styles.heroImageCorners} accessibilityLabel={`${tab} illustrative banner`}>
+    <View style={styles.heroScrim} />
+    <View style={styles.heroCopy}><Text style={styles.heroKicker}>{banner.kicker}</Text><Text style={styles.heroTitle}>{banner.title}</Text></View>
+    <Text style={styles.heroIllustration}>AI ILLUSTRATION</Text>
+  </ImageBackground>;
+}
+
+function SponsorPlaceholder() {
+  return <View style={styles.sponsorPlaceholder} accessibilityLabel="Sponsor feature placeholder">
+    <ImageBackground source={require('./assets/original-photo-library/abstract-light-gallery.png')} style={styles.sponsorPhoto} imageStyle={styles.heroImageCorners}>
+      <View style={styles.heroScrim} />
+      <View style={styles.sponsorPhotoCopy}><Text style={styles.sponsorKicker}>SPONSOR PLACEHOLDER</Text><Text style={styles.sponsorTitle}>A new local story could start here.</Text></View>
+    </ImageBackground>
+    <Text style={styles.sponsorCaption}>Reserved for a future local partner. Any paid placement will be clearly labeled.</Text>
+  </View>;
+}
 const weekInterests: WeekInterest[] = ['All', 'Dance', 'Classes', 'Markets', 'Music', 'Theatre', 'Arts', 'Outdoors', 'Food', 'Sports', 'Community'];
 const nowFocuses: NowFocus[] = ['Anything', 'Outdoors', 'Creative', 'Food', 'Unexpected'];
 const routeFocuses: RouteFocus[] = ['Best stop', 'Views', 'Food', 'Culture', 'Unexpected'];
@@ -1023,6 +1050,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
     <IncomingShareBoundary><IncomingShare onReceive={receiveShare} /></IncomingShareBoundary>
     <View style={styles.header}><View style={styles.brandRow}><Image source={require('./assets/pbb-mountain-mark.png')} style={styles.brandMark} accessibilityLabel="PB&B mountain explorer taking a photo" /><View style={styles.brandInfo}><Text style={styles.brand}>PB&B</Text><Text style={styles.brandSub} numberOfLines={1}>Exploring {preferences.place || 'anywhere'}</Text></View></View><Pressable onPress={() => setTab('Settings')} style={styles.settingsButton} accessibilityRole="button" accessibilityLabel="Open settings"><SettingsIcon size={16} color={sea} /><Text style={styles.settingsButtonText}>Settings</Text></Pressable></View>
     <ScrollView ref={scrollRef} key={selected?.id ?? tab} style={styles.content} contentContainerStyle={styles.contentInner} keyboardShouldPersistTaps="handled">
+      {!selected && <TabBanner tab={tab} />}
       {!selected && lastPassed && <View style={styles.undoBanner}><Text style={styles.undoText}>Passed on {lastPassed.item.title}</Text><Pressable onPress={undoPass}><Text style={styles.undoLink}>Undo</Text></Pressable></View>}
       {selected ? <View>
         <Pressable onPress={() => setSelected(null)}><Text style={styles.back}>‹ Back to exploring</Text></Pressable>
@@ -1035,7 +1063,6 @@ function AppContent({ accountUid }: { accountUid: string }) {
         {selected.mode === 'live' && selected.verifiedAt ? <Text style={styles.helper}>Source last checked {formatDate(selected.verifiedAt)}. Confirm current details with the organizer.</Text> : null}
         <Action label={savedIds.includes(selected.id) ? 'Remove from saved' : 'Save for later'} onPress={() => toggleSaved(selected)} />
       </View> : tab === 'Discover' ? <View>
-        <ImageBackground source={require('./assets/original-photo-library/beginner-partner-dance.png')} style={styles.heroImage} imageStyle={styles.heroImageCorners}><Text style={styles.heroKicker}>MAKE A STORY OF IT</Text><Text style={styles.heroTitle}>{'Find the\nunexpected.'}</Text></ImageBackground>
         <View style={styles.homeIntro}><View style={styles.homeIntroText}><Text style={styles.sectionKicker}>LOCAL INSPIRATION</Text><Text style={styles.homeTitle}>{`${preferences.place.split(',')[0].trim() || 'Local'} ideas.`}</Text></View><Pressable onPress={() => setTab('Settings')} style={styles.placeButton}><Text style={styles.placeButtonText}>⌖  Change place</Text></Pressable></View>
         <Text style={styles.homeLead}>Your scout checks current public sources near {preferences.place}. Choose how you want to explore.</Text>
         <View style={styles.discoverChoices}>
@@ -1248,6 +1275,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
         {currentScoutGuestId() ? <Text style={styles.helper} selectable>Privacy request ID: {currentScoutGuestId()}. Include this ID if you email us about deleting service records.</Text> : null}
         <Action label="Clear passes and loves" onPress={() => setFeedback({})} secondary />
       </View>}
+      {!selected && <SponsorPlaceholder />}
     </ScrollView>
     {!selected && <View style={styles.tabBar}>{tabs.map(value => <Pressable key={value} onPress={() => setTab(value)} style={styles.tab} accessibilityRole="tab" accessibilityState={{ selected: tab === value }}><View style={styles.tabIconSlot}>{value === 'Settings' ? <SettingsIcon size={22} color={tab === value ? sea : '#667F82'} /> : value === 'This Week' ? <CalendarIcon size={22} color={tab === value ? sea : '#667F82'} /> : <Text style={[styles.tabIcon, tab === value && styles.tabActive]}>{value === 'Discover' ? '✦' : value === 'Now' ? '◷' : value === 'Along the Way' ? '↗' : '♡'}</Text>}</View><Text style={[styles.tabText, tab === value && styles.tabActive]}>{value === 'Along the Way' ? 'Along' : value === 'This Week' ? 'Week' : value}</Text></Pressable>)}</View>}
   </SafeAreaView>;
@@ -1259,7 +1287,8 @@ function Setting({ label, value, onPress }: { label: string; value: boolean; onP
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F5F8F7' }, header: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderColor: '#DCE8E4' },
-  heroImage: { height: 156, borderRadius: 2, padding: 21, justifyContent: 'flex-end', marginBottom: 16, overflow: 'hidden' }, heroImageCorners: { borderRadius: 2 }, heroKicker: { color: '#B9ED5C', fontSize: 10, fontWeight: '900', letterSpacing: 1.6, marginBottom: 7 }, heroTitle: { color: '#FFFFFF', fontSize: 27, fontWeight: '900', lineHeight: 31, letterSpacing: -0.6, maxWidth: 190 },
+  heroImage: { height: 156, borderRadius: 2, padding: 21, justifyContent: 'flex-end', marginBottom: 16, overflow: 'hidden' }, heroImageCorners: { borderRadius: 2 }, heroScrim: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0, 0, 0, 0.38)' }, heroCopy: { zIndex: 1 }, heroKicker: { color: '#B9ED5C', fontSize: 10, fontWeight: '900', letterSpacing: 1.6, marginBottom: 7 }, heroTitle: { color: '#FFFFFF', fontSize: 27, fontWeight: '900', lineHeight: 31, letterSpacing: -0.6, maxWidth: 200 }, heroIllustration: { position: 'absolute', right: 11, top: 11, color: '#FFFFFF', backgroundColor: 'rgba(16, 61, 70, 0.72)', fontSize: 8, fontWeight: '800', letterSpacing: 0.8, paddingHorizontal: 7, paddingVertical: 4, overflow: 'hidden' },
+  sponsorPlaceholder: { borderWidth: 1, borderStyle: 'dashed', borderColor: '#8EABA9', backgroundColor: '#FFFFFF', marginTop: 28, marginBottom: 14, overflow: 'hidden' }, sponsorPhoto: { height: 116, justifyContent: 'flex-end', padding: 15 }, sponsorPhotoCopy: { zIndex: 1 }, sponsorKicker: { color: '#B9ED5C', fontSize: 9, fontWeight: '900', letterSpacing: 1.2, marginBottom: 5 }, sponsorTitle: { color: '#FFFFFF', fontSize: 19, fontWeight: '900', lineHeight: 23, maxWidth: 260 }, sponsorCaption: { color: '#45656B', fontSize: 11, lineHeight: 16, paddingHorizontal: 15, paddingVertical: 11 },
   discoverChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24 },
   discoverChoice: { width: '48%', minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 2, borderColor: '#18B8B0', backgroundColor: '#FFFFFF', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 12 },
   discoverChoiceSelected: { backgroundColor: '#B9ED5C', borderColor: '#103D46' },
