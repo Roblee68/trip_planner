@@ -57,15 +57,6 @@ function TabBanner({ tab }: { tab: Tab }) {
   </ImageBackground>;
 }
 
-function SponsorPlaceholder() {
-  return <View style={styles.sponsorPlaceholder} accessibilityLabel="Sponsor feature placeholder">
-    <ImageBackground source={require('./assets/original-photo-library/abstract-light-gallery.png')} style={styles.sponsorPhoto} imageStyle={styles.heroImageCorners}>
-      <View style={styles.heroScrim} />
-      <View style={styles.sponsorPhotoCopy}><Text style={styles.sponsorKicker}>SPONSOR PLACEHOLDER</Text><Text style={styles.sponsorTitle}>A new local story could start here.</Text></View>
-    </ImageBackground>
-    <Text style={styles.sponsorCaption}>Reserved for a future local partner. Any paid placement will be clearly labeled.</Text>
-  </View>;
-}
 const weekInterests: WeekInterest[] = ['All', 'Dance', 'Classes', 'Markets', 'Music', 'Theatre', 'Arts', 'Outdoors', 'Food', 'Sports', 'Community'];
 const nowFocuses: NowFocus[] = ['Anything', 'Outdoors', 'Creative', 'Food', 'Unexpected'];
 const routeFocuses: RouteFocus[] = ['Best stop', 'Views', 'Food', 'Culture', 'Unexpected'];
@@ -572,7 +563,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
   const diverse = showDiverse ? [...visible].sort((a, b) => Number(preferences.interests.includes(a.category)) - Number(preferences.interests.includes(b.category))) : visible;
   const organicItems = diverse;
   const weeklyPicks: FeaturedDestination[] = weeklyFeatured?.adventures ?? [];
-  const visibleFeatured = weeklyPicks.length ? weeklyPicks : featuredDestinations;
+  const visibleFeatured = [...weeklyPicks, ...featuredDestinations.filter(destination => !weeklyPicks.some(pick => pick.sourceUrl === destination.sourceUrl))].slice(0, 3);
   const weeklyToday = localDateKey();
   const weeklyEnd = addDaysToDateKey(weeklyToday, 6);
   const weeklyAll = visibleWeeklyLocalEvents(weeklyLocalFeed?.events ?? [], weeklyToday);
@@ -1084,16 +1075,16 @@ function AppContent({ accountUid }: { accountUid: string }) {
           {homeWebIdeas.length ? <><Text style={styles.webIntro}>{homeScoutMessage}</Text>{homeWebIdeas.map(idea => webIdeaCard(idea))}</> : homeScoutCitations.length ? <CitedScoutText message={homeScoutMessage} citations={homeScoutCitations} /> : !homeLoading && homeScoutMessage ? <Text style={styles.notice}>{weeklyAll.length && homeScoutMessage.startsWith('I could not find a source-linked activity') ? `No personalized picks matched this search. The Week tab has ${weeklyAll.length} source-linked ${weeklyAll.length === 1 ? 'event' : 'events'} to browse.` : homeScoutMessage}</Text> : null}
           {!homeLoading && !homeWebIdeas.length && weeklyAll.length > 0 && <Action label={`See ${weeklyAll.length} events this week`} onPress={() => setTab('This Week')} secondary small />}
           {alerts.length > 0 && <Pressable onPress={() => setTab('Settings')} style={styles.alertBanner}><Text style={styles.alertBannerTitle}>✦ {alerts.length} timely {alerts.length === 1 ? 'find' : 'finds'} for you</Text><Text style={styles.alertBannerBody}>See what fits your interests →</Text></Pressable>}
+          <View style={styles.featuredSection}><View style={styles.rowBetween}><Text style={styles.featuredKicker}>{weeklyPicks.length ? 'THIS WEEK’S BIG ADVENTURES' : 'WORTH THE TRIP'}</Text><Text style={styles.featuredBadge}>PB&B PICKS</Text></View>
+            <Text style={styles.featuredDisclosure}>{weeklyPicks.length >= 3 ? `Three source-linked paid adventures found ${formatDate(weeklyFeatured!.checkedAt!)}. This set stays for seven days. No organizer paid for placement; confirm prices and availability before booking.` : weeklyPicks.length ? `New source-linked paid adventures found ${formatDate(weeklyFeatured!.checkedAt!)}. PB&B picks fill the remaining cards until three weekly adventures are ready. No organizer paid for placement; confirm prices and availability before booking.` : `Real paid experiences selected by PB&B. No organizer paid for placement. Prices and availability were checked November 8, 2026; confirm them on the official page before booking.${featuredLoading ? ' Looking for this week’s new adventures…' : ''}`}</Text>
+            {visibleFeatured.map(destination => <FeaturedDestinationCard key={destination.id} destination={destination} />)}
+          </View>
           {(localExamples.length > 0 || remoteItems.length > 0) && <>
             <View style={styles.rowBetween}><Text style={styles.subheading}>{showDiverse ? 'A different direction' : localExamples.length ? 'Toronto sample ideas' : 'Local ideas for you'}</Text><Text style={styles.resultCount}>{homeOrganicItems.length} shown</Text></View>
             {catalogLoading ? <Text style={styles.notice}>Loading ideas…</Text> : homeOrganicItems.map(item => <View key={item.id}><Text style={styles.whyText}>{fitReason(item)}</Text>{itemCard(item)}</View>)}
             {!showMoreIdeas && organicItems.length > 3 && <Action label="See more local ideas" onPress={() => setShowMoreIdeas(true)} secondary />}
             {organicItems.length > 1 && <Action label={showDiverse ? 'Back to your picks' : 'Show me something different'} onPress={() => setShowDiverse(value => !value)} secondary />}
           </>}
-          {!homeLoading && <View style={styles.featuredSection}><View style={styles.rowBetween}><Text style={styles.featuredKicker}>{weeklyPicks.length ? 'THIS WEEK’S BIG ADVENTURES' : 'WORTH THE TRIP'}</Text><Text style={styles.featuredBadge}>PB&B PICKS</Text></View>
-            <Text style={styles.featuredDisclosure}>{weeklyPicks.length ? `New source-linked paid adventures found ${formatDate(weeklyFeatured!.checkedAt!)}. This set stays for seven days. No organizer paid for placement; confirm prices and availability before booking.` : `Real paid experiences selected by PB&B. No organizer paid for placement. Prices and availability were checked November 8, 2026; confirm them on the official page before booking.${featuredLoading ? ' Looking for this week’s new adventures…' : ''}`}</Text>
-            {visibleFeatured.map(destination => <FeaturedDestinationCard key={destination.id} destination={destination} />)}
-          </View>}
         </View>}
         {discoverMode === 'search' && <View>
           <Text style={styles.subheading}>Search & refine</Text>
@@ -1275,7 +1266,6 @@ function AppContent({ accountUid }: { accountUid: string }) {
         {currentScoutGuestId() ? <Text style={styles.helper} selectable>Privacy request ID: {currentScoutGuestId()}. Include this ID if you email us about deleting service records.</Text> : null}
         <Action label="Clear passes and loves" onPress={() => setFeedback({})} secondary />
       </View>}
-      {!selected && <SponsorPlaceholder />}
     </ScrollView>
     {!selected && <View style={styles.tabBar}>{tabs.map(value => <Pressable key={value} onPress={() => setTab(value)} style={styles.tab} accessibilityRole="tab" accessibilityState={{ selected: tab === value }}><View style={styles.tabIconSlot}>{value === 'Settings' ? <SettingsIcon size={22} color={tab === value ? sea : '#667F82'} /> : value === 'This Week' ? <CalendarIcon size={22} color={tab === value ? sea : '#667F82'} /> : <Text style={[styles.tabIcon, tab === value && styles.tabActive]}>{value === 'Discover' ? '✦' : value === 'Now' ? '◷' : value === 'Along the Way' ? '↗' : '♡'}</Text>}</View><Text style={[styles.tabText, tab === value && styles.tabActive]}>{value === 'Along the Way' ? 'Along' : value === 'This Week' ? 'Week' : value}</Text></Pressable>)}</View>}
   </SafeAreaView>;
@@ -1288,7 +1278,6 @@ function Setting({ label, value, onPress }: { label: string; value: boolean; onP
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F5F8F7' }, header: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderColor: '#DCE8E4' },
   heroImage: { height: 156, borderRadius: 2, padding: 21, justifyContent: 'flex-end', marginBottom: 16, overflow: 'hidden' }, heroImageCorners: { borderRadius: 2 }, heroScrim: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0, 0, 0, 0.38)' }, heroCopy: { zIndex: 1 }, heroKicker: { color: '#B9ED5C', fontSize: 10, fontWeight: '900', letterSpacing: 1.6, marginBottom: 7 }, heroTitle: { color: '#FFFFFF', fontSize: 27, fontWeight: '900', lineHeight: 31, letterSpacing: -0.6, maxWidth: 200 }, heroIllustration: { position: 'absolute', right: 11, top: 11, color: '#FFFFFF', backgroundColor: 'rgba(16, 61, 70, 0.72)', fontSize: 8, fontWeight: '800', letterSpacing: 0.8, paddingHorizontal: 7, paddingVertical: 4, overflow: 'hidden' },
-  sponsorPlaceholder: { borderWidth: 1, borderStyle: 'dashed', borderColor: '#8EABA9', backgroundColor: '#FFFFFF', marginTop: 28, marginBottom: 14, overflow: 'hidden' }, sponsorPhoto: { height: 116, justifyContent: 'flex-end', padding: 15 }, sponsorPhotoCopy: { zIndex: 1 }, sponsorKicker: { color: '#B9ED5C', fontSize: 9, fontWeight: '900', letterSpacing: 1.2, marginBottom: 5 }, sponsorTitle: { color: '#FFFFFF', fontSize: 19, fontWeight: '900', lineHeight: 23, maxWidth: 260 }, sponsorCaption: { color: '#45656B', fontSize: 11, lineHeight: 16, paddingHorizontal: 15, paddingVertical: 11 },
   discoverChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24 },
   discoverChoice: { width: '48%', minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 2, borderColor: '#18B8B0', backgroundColor: '#FFFFFF', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 12 },
   discoverChoiceSelected: { backgroundColor: '#B9ED5C', borderColor: '#103D46' },
