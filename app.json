@@ -12,6 +12,7 @@
       "usesAppleSignIn": true,
       "buildNumber": "3",
       "supportsTablet": true,
+      "appleTeamId": "3C4JL9AW97",
       "bundleIdentifier": "com.roblee.pbandb",
       "deploymentTarget": "16.4"
     },
