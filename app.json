@@ -18,6 +18,7 @@
     "android": {
       "icon": "./assets/detours-app-icon-teal.png",
       "versionCode": 2,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/detours-android-adaptive.png",
         "backgroundColor": "#18B8B0"
@@ -37,6 +38,7 @@
         }
       ],
       "./plugins/withPodMinimum",
+      "./plugins/withAndroidGoogleServicesOnly",
       "expo-apple-authentication",
       "expo-status-bar",
       [
