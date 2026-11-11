@@ -131,6 +131,10 @@ export async function refreshCity(ref:FirebaseFirestore.DocumentReference, now=n
 }
 
 export async function refreshRequestedCities():Promise<void>{
+  for(const collection of ['destinationLookups','verifiedDestinations']){
+    const old=await getFirestore().collection(collection).where('expiresAt','<=',new Date().toISOString()).limit(100).get();
+    if(!old.empty){const batch=getFirestore().batch();for(const doc of old.docs)batch.delete(doc.ref);await batch.commit();}
+  }
   const expired=await getFirestore().collection('routeScoutCache').where('deleteAfter','<=',new Date()).limit(200).get();
   if(!expired.empty){const cleanup=getFirestore().batch();for(const doc of expired.docs)cleanup.delete(doc.ref);await cleanup.commit();}
   // Keep the first supported public feed warm, independently of paid city research.

@@ -23,6 +23,10 @@ export type Candidate = {
 };
 
 export type ScoutRequest = {
+  timeZone?: string;
+  destinationId?: string;
+  destinationLatitude?: number;
+  destinationLongitude?: number;
   prompt: string;
   place: string;
   currency: string;

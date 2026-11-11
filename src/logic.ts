@@ -123,6 +123,7 @@ export type Experience = {
 };
 export type Feedback = Record<string, 'love' | 'pass'>;
 export type Preferences = {
+  locationSource?: 'manual' | 'device';
   interests: Category[];
   topics: string[];
   travelModes: TravelMode[];

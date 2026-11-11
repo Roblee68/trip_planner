@@ -1,6 +1,8 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FirebaseAuth from 'firebase/auth';
+import * as Location from 'expo-location';
+import { locationFixFor, setLocationFix } from './locationSession';
 import { getAuth, initializeAuth, signInAnonymously, type Auth, type Persistence } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Category, Experience, Preferences } from './logic';
@@ -66,7 +68,14 @@ export function pickToExperience(pick: Pick): Experience {
   };
 }
 
-export type RouteSearch = { destination: string; style: 'highway' | 'towns' | 'either'; via: string; detourMinutes: number; timing: 'today' | 'weekend' | 'flexible' };
+export type VerifiedDestination = { id: string; label: string; latitude: number; longitude: number; country: string; region: string; kind: string };
+export type RouteSearch = { destination: string; destinationId?: string; style: 'highway' | 'towns' | 'either'; via: string; detourMinutes: number; timing: 'today' | 'weekend' | 'flexible' };
+export async function lookupDestination(query: string): Promise<VerifiedDestination[]> {
+  const app=getApps().length?getApp():initializeApp(firebaseConfig);
+  await ensureScoutGuestAuth(getScoutAuth());
+  const call=httpsCallable<{mode:string;query:string},{results:VerifiedDestination[]}>(getFunctions(app,'northamerica-northeast2'),'suggestExperiences');
+  return (await call({mode:'destination',query})).data.results;
+}
 export type ScoutAllowance = { limit: number; remaining: number; resetsAt: string; available: boolean };
 export async function getScoutAllowance(): Promise<ScoutAllowance> {
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
@@ -81,11 +90,20 @@ export async function askRemoteScout(prompt: string, preferences: Preferences, r
   await ensureScoutGuestAuth(auth);
   const call = httpsCallable(getFunctions(app, 'northamerica-northeast2'), 'suggestExperiences', { timeout: 160_000 });
   const localNow = new Date();
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  let origin: {latitude:number;longitude:number} | null = null;
+  if (preferences.locationSource === 'device') {
+    try {
+      if ((await Location.getForegroundPermissionsAsync()).granted) origin=locationFixFor(preferences.place);
+      else setLocationFix(null);
+    } catch { setLocationFix(null); }
+  }
   const localDate = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
   const localTime = `${String(localNow.getHours()).padStart(2, '0')}:${String(localNow.getMinutes()).padStart(2, '0')}`;
   const response = await call({
     prompt: prompt.trim() || 'Find an interesting experience for me',
     place: preferences.place.trim(), currency: preferences.currency.trim().toUpperCase(),
+    timeZone, ...(origin ?? {}), destinationId: route?.destinationId,
     maxBudget: preferences.maxBudget, maxDistanceKm: preferences.maxDistanceKm,
     interests: preferences.interests, topics: preferences.topics, travelModes: preferences.travelModes, refinement,
     likedExamples: surprise ? [] : likedExamples.slice(0, 12),

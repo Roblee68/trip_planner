@@ -21,6 +21,9 @@ export const deleteAccount = onCall({
   await db.collection('scoutSubscriptions').doc(uid).delete();
   await deleteMatchingDocuments(db.collection('scoutNotifications').where('uid', '==', uid));
   await deleteMatchingDocuments(db.collection('routeScoutCache').where('uid', '==', uid));
+  await deleteMatchingDocuments(db.collection('destinationLookups').where('uid', '==', uid));
+  await deleteMatchingDocuments(db.collection('verifiedDestinations').where('uid', '==', uid));
+  await deleteMatchingDocuments(db.collection('mapUsage').orderBy(FieldPath.documentId()).startAt(`${uid}_`).endAt(`${uid}_\uf8ff`));
   await deleteMatchingDocuments(db.collection('catalogueUsage').orderBy(FieldPath.documentId()).startAt(`cities_${uid}_`).endAt(`cities_${uid}_\uf8ff`));
   for (const prefix of [`${uid}_`, `weeklyLocal_${uid}_`]) {
     await deleteMatchingDocuments(db.collection('agentUsage').orderBy(FieldPath.documentId()).startAt(prefix).endAt(`${prefix}\uf8ff`));

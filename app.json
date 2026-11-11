@@ -10,7 +10,7 @@
     "ios": {
       "icon": "./assets/detours-app-icon-teal.png",
       "usesAppleSignIn": true,
-      "buildNumber": "3",
+      "buildNumber": "4",
       "supportsTablet": true,
       "appleTeamId": "3C4JL9AW97",
       "bundleIdentifier": "com.roblee.pbandb",
@@ -18,7 +18,7 @@
     },
     "android": {
       "icon": "./assets/detours-app-icon-teal.png",
-      "versionCode": 3,
+      "versionCode": 4,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.SYSTEM_ALERT_WINDOW"
@@ -45,12 +45,13 @@
       ],
       "./plugins/withPodMinimum",
       "./plugins/withAndroidGoogleServicesOnly",
+      "./plugins/withReleaseSigning",
       "expo-apple-authentication",
       "expo-status-bar",
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow PB&B to find your nearby city and suggest experiences when you ask."
+          "locationWhenInUsePermission": "Allow PB&B to find nearby events and check distances while you use the app."
         }
       ],
       "./plugins/withLocalNotificationsOnly",

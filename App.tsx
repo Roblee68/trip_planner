@@ -18,7 +18,8 @@ import { planReminders } from './src/reminders';
 import { listenForSourceTaps, phoneAlertsAllowed, requestPhoneAlerts, sendSampleAlert, syncImportedReminders, syncPhoneReminders } from './src/phoneAlerts';
 import { dailyScoutConfigured, getDailyPushToken, saveDailyScoutSubscription } from './src/dailyScout';
 import { interpretIntent, recommendForIntent, type DiscoveryMode } from './src/agent';
-import { askRemoteScout, getScoutAllowance, type ScoutAllowance, currentScoutGuestId, ensureScoutGuestAuth, firebaseConfig, getScoutAuth, getWeeklyFeaturedAdventures, getWeeklyLocalEvents, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse, type WeeklyLocalResponse, type WeeklyLocalEvent } from './src/remoteScout';
+import { askRemoteScout, lookupDestination, type VerifiedDestination, getScoutAllowance, type ScoutAllowance, currentScoutGuestId, ensureScoutGuestAuth, firebaseConfig, getScoutAuth, getWeeklyFeaturedAdventures, getWeeklyLocalEvents, pickToExperience, remoteScoutConfigured, scanSharedFind, type RouteSearch, type ScoutCitation, type WebIdea, type WeeklyFeaturedResponse, type WeeklyLocalResponse, type WeeklyLocalEvent } from './src/remoteScout';
+import { setLocationFix, locationFixFor } from './src/locationSession';
 import { AccountScreen } from './src/AccountScreen';
 import { SettingsIcon } from './src/SettingsIcon';
 import { ArrowIcon, CalendarIcon } from './src/ArrowIcon';
@@ -151,8 +152,8 @@ function Pill({ label, active, onPress }: { label: string; active?: boolean; onP
   return <Pressable onPress={onPress} style={[styles.pill, active && styles.pillActive]}><Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text></Pressable>;
 }
 
-function Action({ label, onPress, secondary, small }: { label: string; onPress: () => void; secondary?: boolean; small?: boolean }) {
-  return <Pressable onPress={onPress} style={[styles.action, secondary && styles.actionSecondary, small && styles.actionSmall]}><Text style={[styles.actionText, secondary && styles.actionTextSecondary]}>{label}</Text></Pressable>;
+function Action({ label, onPress, secondary, small, disabled }: { label: string; onPress: () => void; secondary?: boolean; small?: boolean; disabled?: boolean }) {
+  return <Pressable disabled={disabled} accessibilityState={{disabled:!!disabled}} onPress={onPress} style={[styles.action, secondary && styles.actionSecondary, small && styles.actionSmall, disabled && {opacity:0.45}]}><Text style={[styles.actionText, secondary && styles.actionTextSecondary]}>{label}</Text></Pressable>;
 }
 
 function formatDate(date: string) {
@@ -346,6 +347,11 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
   const [nowLoading, setNowLoading] = useState(false);
   const [nowSearched, setNowSearched] = useState(false);
   const [destination, setDestination] = useState('');
+  const [confirmedPlace, setConfirmedPlace] = useState<VerifiedDestination | null>(null);
+  const [destinationMatches, setDestinationMatches] = useState<VerifiedDestination[]>([]);
+  const [destinationBusy, setDestinationBusy] = useState(false);
+  const [destinationMessage, setDestinationMessage] = useState('');
+  const destinationRequestId = useRef(0);
   const [routeStyle, setRouteStyle] = useState<RouteSearch['style']>('either');
   const [routeVia, setRouteVia] = useState('');
   const [detourMinutes, setDetourMinutes] = useState(30);
@@ -390,6 +396,9 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
   const [locationMessage, setLocationMessage] = useState('');
   const [locationBusy, setLocationBusy] = useState(false);
   const [locationDenied, setLocationDenied] = useState(false);
+  const [locationEpoch, setLocationEpoch] = useState(0);
+  const locationBusyRef = useRef(false);
+  const locationRequestId = useRef(0);
   const scrollRef = useRef<ScrollView>(null);
   const nowRequestId = useRef(0);
   const routeRequestId = useRef(0);
@@ -507,7 +516,7 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
 
   const furtherRadiusKm = Math.min(500, preferences.maxDistanceKm + toKilometres(25, preferences.distanceUnit));
   const discoverPreferences = useMemo(() => discoverWide ? { ...preferences, maxDistanceKm: furtherRadiusKm } : preferences, [discoverWide, preferences, furtherRadiusKm]);
-  const widerSearchKey = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes]);
+  const widerSearchKey = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes, locationEpoch]);
   useEffect(() => {
     wideRequestId.current += 1;
     setWideWebIdeas([]);
@@ -528,7 +537,7 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
   const alerts = useMemo(() => opportunityAlerts(allItems, preferences, feedback, savedIds), [allItems, preferences, feedback, savedIds]);
   useEffect(() => {
     if (!hydrated || !remoteScoutConfigured || !preferences.place.includes(',') || !/^[A-Z]{3}$/.test(preferences.currency)) return;
-    const scoutKey = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes]);
+    const scoutKey = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes, locationEpoch]);
     if (lastAutoScoutKey.current === scoutKey) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -556,7 +565,7 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
     };
     timer = setTimeout(run, 900);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [hydrated, preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests.join(','), preferences.topics.join(','), preferences.travelModes.join(',')]);
+  }, [hydrated, preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests.join(','), preferences.topics.join(','), preferences.travelModes.join(','), locationEpoch]);
   useEffect(() => {
     if (!hydrated) return;
     let cancelled = false;
@@ -657,12 +666,18 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
       setDailyScoutMessage('Daily web scout alerts are on. Possible weekend ideas and sign-up deadlines will link to their source.');
     } catch { setDailyScoutMessage('Daily alerts could not be connected. Check the live service and push credentials.'); }
   };
-  const useCurrentLocation = async () => {
+  const useCurrentLocation = async (requestPermission = true) => {
+    if (locationBusyRef.current) return;
+    locationBusyRef.current = true;
+    const requestId = ++locationRequestId.current;
     setLocationBusy(true);
     setLocationMessage('Finding your nearby city…');
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
+      const permission = requestPermission ? await Location.requestForegroundPermissionsAsync() : await Location.getForegroundPermissionsAsync();
+      if (requestId !== locationRequestId.current) return;
       if (!permission.granted) {
+        setLocationFix(null);
+        setLocationEpoch(value => value + 1);
         setLocationDenied(true);
         setLocationMessage('Location is off for PB&B. Allow it in your phone settings, or enter a city below.');
         return;
@@ -673,17 +688,30 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
       const city = address?.city || address?.subregion || address?.region;
       const country = address?.country;
       if (!city || !country) throw new Error('No nearby city found');
+      if (requestId !== locationRequestId.current) return;
       const place = `${city}, ${country}`;
+      setLocationFix({latitude:position.coords.latitude,longitude:position.coords.longitude,place,checkedAt:Date.now()});
+      setLocationEpoch(value => value + 1);
       const localCurrency = currencyForCountry(address.isoCountryCode);
       setSuggestedCurrency(localCurrency);
-      setPreferences(current => ({ ...current, place, currency: localCurrency ?? current.currency }));
+      setPreferences(current => ({ ...current, place, locationSource:'device', currency: localCurrency ?? current.currency }));
       setLocationMessage(localCurrency ? `Exploring near ${place}. ${localCurrency} was selected from your location; you can change it below.` : `Exploring near ${place}. Choose a currency below.`);
     } catch {
+      if (requestId !== locationRequestId.current) return;
+      setLocationFix(null);
+      setLocationEpoch(value => value + 1);
       setLocationMessage('We could not find a nearby city. You can still enter one below.');
     } finally {
+      locationBusyRef.current = false;
       setLocationBusy(false);
     }
   };
+  useEffect(() => {
+    if (!hydrated || preferences.locationSource !== 'device') { setLocationFix(null); return; }
+    if (!locationFixFor(preferences.place)) void useCurrentLocation(false);
+    const listener = AppState.addEventListener('change', state => { if (state === 'active') void useCurrentLocation(false); });
+    return () => { locationRequestId.current += 1; listener.remove(); };
+  }, [hydrated, preferences.locationSource, accountUid]);
   const applyImportedCandidate = (find: ExtractedFind) => {
     setImportTitle(find.sourceTitle ?? find.title);
     setImportDateText(find.dateText);
@@ -911,7 +939,7 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
       setHomeScoutMessage(result.message);
       setHomeScoutCitations(result.citations ?? []);
       setAutoScoutStatus(result.mode === 'web' ? 'Your scout checked the public web.' : result.mode === 'live' ? 'Showing source-linked ideas from your area collection.' : 'Your scout found sample ideas.');
-      lastAutoScoutKey.current = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes]);
+      lastAutoScoutKey.current = JSON.stringify([preferences.place, preferences.currency, preferences.maxBudget, preferences.maxDistanceKm, preferences.interests, preferences.topics, preferences.travelModes, locationEpoch]);
     } catch (error) {
       if (requestId === homeRequestId.current) { setHomeScoutMessage(error instanceof Error ? `The scout is unavailable: ${error.message}` : 'The scout is unavailable. Please try again.'); setAutoScoutStatus('Live scout needs another try.'); }
     } finally { homeScoutBusy.current = false; if (requestId === homeRequestId.current) setHomeLoading(false); }
@@ -961,18 +989,31 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
     } finally { if (requestId === nowRequestId.current) setNowLoading(false); }
   };
   const resetRouteResults = () => { routeRequestId.current += 1; setRouteIdeas([]); setRouteMessage(''); setRouteLoading(false); setRouteSearched(false); };
+  const verifyDestination = async () => {
+    const query = destination.trim();
+    if (query.length < 3) { setDestinationMessage('Enter a place name, landmark, address or coordinates first.'); return; }
+    const requestId = ++destinationRequestId.current;
+    setConfirmedPlace(null);setDestinationMatches([]);setDestinationBusy(true);setDestinationMessage('Looking up real locations…');resetRouteResults();
+    try {
+      const results = await lookupDestination(query);
+      if (requestId !== destinationRequestId.current) return;
+      setDestinationMatches(results);
+      setDestinationMessage(results.length ? 'Select the exact location you mean to confirm it.' : 'No matching location was verified. Add a region, country or address and try again. No AI action was used.');
+    } catch (error) { if (requestId === destinationRequestId.current) setDestinationMessage(error instanceof Error ? error.message : 'Location lookup is unavailable. No AI action was used.'); }
+    finally { if (requestId === destinationRequestId.current) setDestinationBusy(false); }
+  };
   const runRouteScout = async () => {
     const requestId = ++routeRequestId.current;
     const nextDestination = destination.trim();
     setRouteSearched(true);
     setRouteIdeas([]);
-    if (nextDestination.length < 3) { setRouteMessage('Tell your scout where you are heading first.'); return; }
+    if (!confirmedPlace || confirmedPlace.label !== nextDestination) { setRouteMessage('Look up your destination and select a confirmed location first.'); return; }
     if (!remoteScoutConfigured) { setRouteMessage('Live route discovery is not connected in this preview.'); return; }
     if (!preferences.travelModes.includes('car')) { setRouteMessage('Turn on Cars in Settings to search along a driving route.'); return; }
     if (routeStyle !== 'either' && !routeVia.trim()) { setRouteMessage(routeStyle === 'highway' ? 'Which highway are you taking?' : 'Which town could you go through?'); return; }
     setRouteLoading(true);
     setRouteMessage('');
-    const route: RouteSearch = { destination: nextDestination, style: routeStyle, via: routeVia, detourMinutes, timing: routeTiming };
+    const route: RouteSearch = { destination: nextDestination, destinationId:confirmedPlace.id, style: routeStyle, via: routeVia, detourMinutes, timing: routeTiming };
     try {
       const focus = routeFocus === 'Best stop' ? '' : ` Focus on ${routeFocus.toLowerCase()} stops.`;
       const prompt = `Find interesting source-linked stops along my driving route using my route answers, interests and budget.${focus}`;
@@ -1179,13 +1220,20 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
         <Text style={styles.footerNote}>Check the organizer’s site before leaving. Hours, availability, weather and prices can change.</Text>
       </View> : tab === 'Along the Way' ? <View>
         <Text style={styles.sectionKicker}>A LITTLE DETOUR</Text><Text style={styles.h1}>One good stop on the way.</Text><Text style={styles.lead}>Your scout can look between {preferences.place} and your destination. Tell it how you want to travel.</Text>
-        <Text style={styles.label}>Where are you heading?</Text><TextInput value={destination} onChangeText={value => { setDestination(value.slice(0, 120)); resetRouteResults(); }} placeholder="Destination city, country" placeholderTextColor="#6C8285" style={styles.search} />
+        <Text style={styles.label}>Where are you heading?</Text><TextInput value={destination} onChangeText={value => { destinationRequestId.current += 1; setDestination(value.slice(0,200)); setConfirmedPlace(null); setDestinationMatches([]); setDestinationMessage(''); setDestinationBusy(false); resetRouteResults(); }} placeholder="Place, landmark, address or coordinates" placeholderTextColor="#6C8285" style={styles.search} />
+        <Action label={destinationBusy ? 'Checking location…' : 'Look up destination'} onPress={() => { void verifyDestination(); }} disabled={destinationBusy || destination.trim().length < 3} secondary />
+        <Text style={styles.helper}>Location searches are sent to Photon/OpenStreetMap. Choose a match below to confirm where you mean. This uses no AI action.</Text>
+        {destinationMessage ? <Text style={styles.notice}>{destinationMessage}</Text> : null}
+        {destinationMatches.map(place => <Pressable key={place.id} accessibilityRole="button" accessibilityLabel={`Confirm destination ${place.label}`} style={styles.importPanel} onPress={() => { setConfirmedPlace(place); setDestination(place.label); setDestinationMatches([]); setDestinationMessage('Destination confirmed.'); resetRouteResults(); }}><Text style={styles.subheading}>{place.label}</Text><Text style={styles.helper}>Use this destination →</Text></Pressable>)}
+        {confirmedPlace && <View style={styles.importPanel}><Text style={styles.subheading}>Confirmed: {confirmedPlace.label}</Text><Action label="Check on map ↗" onPress={() => { void Linking.openURL(`https://www.openstreetmap.org/?mlat=${confirmedPlace.latitude}&mlon=${confirmedPlace.longitude}#map=14/${confirmedPlace.latitude}/${confirmedPlace.longitude}`); }} secondary small /></View>}
+        <Text style={styles.helper}>© OpenStreetMap contributors · Photon</Text>
+        <Text style={styles.helper}>When you search for a stop, OpenAI receives your confirmed destination and your approved current location, if enabled, to research the route.</Text>
         <Text style={styles.label}>Which way are you going?</Text><View style={styles.chipRow}><Pill label="Highway" active={routeStyle === 'highway'} onPress={() => { setRouteStyle('highway'); setRouteVia(''); resetRouteResults(); }} /><Pill label="Through a town" active={routeStyle === 'towns'} onPress={() => { setRouteStyle('towns'); setRouteVia(''); resetRouteResults(); }} /><Pill label="Either way" active={routeStyle === 'either'} onPress={() => { setRouteStyle('either'); setRouteVia(''); resetRouteResults(); }} /></View>
         {routeStyle !== 'either' && <><Text style={styles.label}>{routeStyle === 'highway' ? 'Which highway are you taking?' : 'Which town could you go through?'}</Text><TextInput value={routeVia} onChangeText={value => { setRouteVia(value.slice(0, 100)); resetRouteResults(); }} placeholder={routeStyle === 'highway' ? 'Highway 401' : 'A town along the way'} placeholderTextColor="#6C8285" style={styles.search} /></>}
         <Text style={styles.label}>How long a detour would you take?</Text><View style={styles.chipRow}>{[0, 15, 30, 60].map(value => <Pill key={value} label={value === 0 ? 'On the route' : `${value} min`} active={detourMinutes === value} onPress={() => { setDetourMinutes(value); resetRouteResults(); }} />)}</View>
         <Text style={styles.label}>When are you travelling?</Text><View style={styles.chipRow}><Pill label="Today" active={routeTiming === 'today'} onPress={() => { setRouteTiming('today'); resetRouteResults(); }} /><Pill label="This weekend" active={routeTiming === 'weekend'} onPress={() => { setRouteTiming('weekend'); resetRouteResults(); }} /><Pill label="Just exploring" active={routeTiming === 'flexible'} onPress={() => { setRouteTiming('flexible'); resetRouteResults(); }} /></View>
         <Text style={styles.label}>What kind of stop?</Text><View style={styles.chipRow}>{routeFocuses.map(value => <Pill key={value} label={value} active={routeFocus === value} onPress={() => { setRouteFocus(value); resetRouteResults(); }} />)}</View>
-        <Action label={routeLoading ? 'Looking along the way…' : 'Find a stop along the way'} onPress={() => { if (!routeLoading) void runRouteScout(); }} />
+        <Action disabled={!confirmedPlace || routeLoading} label={routeLoading ? 'Looking along the way…' : 'Find a stop along the way'} onPress={() => { if (!routeLoading) void runRouteScout(); }} />
         {routeLoading ? <Text style={styles.notice}>Checking public sources along your proposed journey…</Text> : routeIdeas.length ? <><Text style={styles.webIntro}>{routeMessage}</Text>{routeIdeas.map(idea => webIdeaCard(idea, destination.trim()))}</> : routeSearched && routeMessage ? <View style={styles.empty}><Text style={styles.emptyTitle}>{routeMessage.startsWith('No source-linked') ? 'No stop found yet.' : 'Your scout needs a little more.'}</Text><Text style={styles.summary}>{routeMessage}</Text></View> : null}
         <Text style={styles.footerNote}>Stops are possibilities, not a calculated route. Open Check route to compare the actual drive and detour, and confirm the venue’s hours and availability.</Text>
       </View> : tab === 'Saved' ? <View>
@@ -1246,11 +1294,12 @@ function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAc
         <Text style={styles.subheading}>Daily AI allowance</Text>
         <Text style={styles.helper}>{scoutAllowance ? `${scoutAllowance.remaining} of ${scoutAllowance.limit} AI actions remaining. Resets ${new Date(scoutAllowance.resetsAt).toLocaleString()}.` : 'Five AI actions per account or guest session each day.'} Route research and reading shared finds use this allowance. Browsing and filtering collected events do not.</Text>
         {scoutAllowance && !scoutAllowance.available && <Text style={styles.notice}>The shared AI allowance has been reached for today. Collected events remain available.</Text>}
+        <Text style={styles.helper}>Your device time zone: {Intl.DateTimeFormat().resolvedOptions().timeZone}. Event times use the event’s local time zone.</Text>
         <Text style={styles.subheading}>Exploring</Text>
         <Action label={locationBusy ? 'Finding nearby city…' : 'Use my current location'} onPress={() => { if (!locationBusy) void useCurrentLocation(); }} secondary />
         {locationDenied && <Action label="Open phone location settings" onPress={() => { void Linking.openSettings(); }} secondary />}
-        {locationMessage ? <Text style={styles.helper}>{locationMessage}</Text> : <Text style={styles.helper}>Location is used only when you tap the button. You can always choose another place.</Text>}
-        <TextInput value={preferences.place} onChangeText={place => setPreferences(current => ({ ...current, place }))} placeholder="City and country" placeholderTextColor="#6C8285" style={styles.search} />
+        {locationMessage ? <Text style={styles.helper}>{locationMessage}</Text> : <Text style={styles.helper}>Location is optional. After you approve it, PB&B refreshes your position while you use the app. It does not track you in the background.</Text>}
+        <TextInput value={preferences.place} onChangeText={place => { locationRequestId.current += 1; setLocationFix(null); setLocationEpoch(value => value + 1); setLocationMessage('Using your chosen place. Enable location to check distances from your current position.'); setPreferences(current => ({ ...current, place, locationSource:'manual' })); }} placeholder="City and country" placeholderTextColor="#6C8285" style={styles.search} />
         <Pressable onPress={() => setCurrencyOpen(value => !value)} style={styles.searchToggle}><Text style={styles.searchToggleText}>Currency · {preferences.currency}{currencyName(preferences.currency) === preferences.currency ? '' : ` ${currencyName(preferences.currency)}`}</Text><Text style={styles.searchChevron}>{currencyOpen ? '−' : '+'}</Text></Pressable>
         {suggestedCurrency && <Text style={styles.helper}>Suggested for your current location: {suggestedCurrency}. You can choose any currency.</Text>}
         {currencyOpen && <View style={styles.searchPanel}>

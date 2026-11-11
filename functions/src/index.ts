@@ -5,6 +5,7 @@ import { defineSecret } from 'firebase-functions/params';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { catalogueScout, catalogueWeekly, refreshRequestedCities } from './eventStore.js';
 import { cachedRouteScout } from './scoutCache.js';
+import { confirmedDestination, lookupDestinations } from './destinations.js';
 import { loadCandidates } from './catalog.js';
 import { parseScoutRequest } from './selection.js';
 import { scout } from './scout.js';
@@ -21,6 +22,7 @@ const openaiApiKey = defineSecret('OPENAI_API_KEY');
 export const suggestExperiences = onCall({ region: 'northamerica-northeast2', invoker: 'public', secrets: [openaiApiKey], timeoutSeconds: 150, memory: '512MiB', maxInstances: 1 }, async request => {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in before using the scout.');
   if (request.data?.mode === 'allowance') return readAllowance(request.auth.uid);
+  if (request.data?.mode === 'destination') return lookupDestinations(request.auth.uid,request.data.query);
   if (!openaiApiKey.value()) throw new HttpsError('failed-precondition', 'The scout is not configured yet.');
   if (request.data?.mode === 'import') {
     let importInput;
@@ -37,14 +39,18 @@ export const suggestExperiences = onCall({ region: 'northamerica-northeast2', in
   try { input = parseScoutRequest(request.data); }
   catch { throw new HttpsError('invalid-argument', 'Please check the request and location.'); }
   try {
-    if (input.occasion === 'route') return await cachedRouteScout(request.auth.uid,input,async()=>{await reservePaidAction(request.auth!.uid);return scoutWeb(input);});
+    if (input.occasion === 'route') {
+      const destination=await confirmedDestination(request.auth.uid,input.destinationId,input.routeDestination!);
+      input.destinationLatitude=destination.latitude;input.destinationLongitude=destination.longitude;
+      return await cachedRouteScout(request.auth.uid,input,async()=>{await reservePaidAction(request.auth!.uid);return scoutWeb(input);});
+    }
     if (process.env.PBB_SCOUT_MODE !== 'legacy') return await catalogueScout(input,request.auth.uid);
     await reservePaidAction(request.auth.uid);
     const candidates = await loadCandidates(input);
     return await scout(input, candidates);
   } catch (error) {
     if (error instanceof HttpsError) throw error;
-    console.error('Scout failed', error);
+    console.error('Scout failed', {name:error instanceof Error ? error.name : 'UnknownError'});
     throw new HttpsError('internal', 'The scout could not complete this search. Please try again.');
   }
 });
