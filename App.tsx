@@ -38,52 +38,80 @@ const PRIVACY_POLICY_URL = 'https://tripplanner-910da.web.app/privacy';
 const tabs: Tab[] = ['Discover', 'Now', 'Along the Way', 'Saved', 'Settings'];
 const nowFocuses: NowFocus[] = ['Anything', 'Outdoors', 'Creative', 'Food', 'Unexpected'];
 const routeFocuses: RouteFocus[] = ['Best stop', 'Views', 'Food', 'Culture', 'Unexpected'];
-const weekSymbols: Record<WeeklyLocalEvent['category'], string> = { classes: '✎', outdoors: '△', theatre: '◫', music: '♫', community: '✦', arts: '✳', food: '◌', sports: '◈', markets: '◇', other: '✧' };
 const ink = '#103D46';
 const muted = '#45656B';
 const sea = '#103D46';
 const sampleImages: Record<string, number> = {
-  'sketch-walk': require('./assets/sketch-walk-autumn.png'),
-  ballroom: require('./assets/discovery-hero-v2.png'),
-  'line-dance': require('./assets/line-dance.png'),
-  pottery: require('./assets/pottery-workshop.png'),
-  birdwalk: require('./assets/birding-walk.png'),
-  printmaking: require('./assets/pottery-workshop.png'),
-  'forest-bath': require('./assets/birding-walk.png'),
+  'sketch-walk': require('./assets/original-photo-library/autumn-sketch-walk.png'),
+  ballroom: require('./assets/original-photo-library/beginner-partner-dance.png'),
+  'line-dance': require('./assets/original-photo-library/community-line-dance.png'),
+  pottery: require('./assets/original-photo-library/pottery-workshop.png'),
+  birdwalk: require('./assets/original-photo-library/birdwatching-walk.png'),
+  'night-market': require('./assets/original-photo-library/neighbourhood-festival.png'),
+  printmaking: require('./assets/original-photo-library/printmaking-workshop.png'),
+  'forest-bath': require('./assets/original-photo-library/forest-bathing-walk.png'),
 };
-type FeaturedDestination = { id: string; title: string; place: string; summary: string; timing: string; price: string; sourceUrl: string; sourceName: string; imageUrl?: string; imageCredit?: string; fallbackImage: number };
+const categoryImages: Record<Category, number> = {
+  Dance: require('./assets/original-photo-library/beginner-partner-dance.png'),
+  Outdoors: require('./assets/original-photo-library/lakeside-hiking-adventure.png'),
+  Arts: require('./assets/original-photo-library/abstract-light-gallery.png'),
+  Food: require('./assets/original-photo-library/farmers-market.png'),
+  Learning: require('./assets/original-photo-library/cooking-class.png'),
+  Wellness: require('./assets/original-photo-library/forest-bathing-walk.png'),
+};
+const weeklyCategoryImages: Record<WeeklyLocalEvent['category'], number> = {
+  classes: require('./assets/original-photo-library/cooking-class.png'),
+  outdoors: require('./assets/original-photo-library/lakeside-hiking-adventure.png'),
+  theatre: require('./assets/original-photo-library/community-theatre.png'),
+  music: require('./assets/original-photo-library/local-live-music.png'),
+  community: require('./assets/original-photo-library/neighbourhood-festival.png'),
+  arts: require('./assets/original-photo-library/printmaking-workshop.png'),
+  food: require('./assets/original-photo-library/cooking-class.png'),
+  sports: require('./assets/original-photo-library/recreational-sports.png'),
+  markets: require('./assets/original-photo-library/farmers-market.png'),
+  other: require('./assets/original-photo-library/neighbourhood-festival.png'),
+};
+function experienceImage(item: Experience): number {
+  return item.mode !== 'live' && sampleImages[item.id] ? sampleImages[item.id] : categoryImages[item.category];
+}
+function weeklyImage(event: WeeklyLocalEvent): number {
+  if (event.category === 'markets' && /winter|holiday|christmas/i.test(event.title)) return require('./assets/original-photo-library/winter-street-market.png');
+  return weeklyCategoryImages[event.category];
+}
+function adventureImage(text: string): number {
+  if (/dog sled|mush/i.test(text)) return require('./assets/original-photo-library/dog-sled-forest.png');
+  if (/polar bear|churchill|arctic/i.test(text)) return require('./assets/original-photo-library/polar-bear-tundra.png');
+  if (/wizard|magic|immersive|gallery|exhibit/i.test(text)) return require('./assets/original-photo-library/abstract-light-gallery.png');
+  if (/winter|holiday|market/i.test(text)) return require('./assets/original-photo-library/winter-street-market.png');
+  if (/road trip|scenic drive|detour/i.test(text)) return require('./assets/original-photo-library/autumn-lakeside-road.png');
+  return require('./assets/original-photo-library/lakeside-hiking-adventure.png');
+}
+type FeaturedDestination = { id: string; title: string; place: string; summary: string; timing: string; price: string; sourceUrl: string; sourceName: string };
 const featuredDestinations: FeaturedDestination[] = [
   {
     id: 'visions-of-magic', title: 'Harry Potter: Visions of Magic', place: 'Toronto · YZD, 30 Hanover Rd',
     summary: 'Explore an interactive wizarding world art experience. Allow about 45 minutes and choose a timed entry.',
     timing: 'Now open · timed tickets', price: 'From CAD $28 + taxes and fees',
     sourceUrl: 'https://harrypottervisionsofmagic.com/ca/', sourceName: 'Harry Potter: Visions of Magic',
-    imageUrl: 'https://harrypottervisionsofmagic.com/ca/wp-content/uploads/sites/6/2023/08/Homepage-Main-Header.jpeg',
-    fallbackImage: require('./assets/wizard-experience-fallback.jpg'),
   },
   {
     id: 'muskoka-dog-sledding', title: 'Drive a dog sled through Muskoka', place: 'Huntsville · North Ridge Ranch',
     summary: 'Learn to mush your own team on private forest trails. Choose a one-hour or half-day guided tour.',
     timing: 'Winter 2026/27 reservations open', price: 'One-hour tour from CAD $229 + HST per adult',
     sourceUrl: 'https://www.northridgeranch.ca/tours', sourceName: 'North Ridge Ranch',
-    imageUrl: 'https://images.squarespace-cdn.com/content/v1/64c921013fc0dc392373ec93/69f04d51-500c-4677-a163-e787f0b2546d/North%2BRidge%2BRanch%2B1.jpg',
-    fallbackImage: require('./assets/dog-sled-fallback.jpg'),
   },
   {
     id: 'churchill-polar-bears', title: 'Churchill polar bear adventure', place: 'Churchill, Manitoba · depart Winnipeg',
     summary: 'Spend five nights exploring Churchill, including two full days watching wildlife from a Tundra Buggy.',
     timing: 'October–November 2027 departures', price: 'Paid tour · ask operator for price',
     sourceUrl: 'https://frontiersnorth.com/adventures/polar-bears/classic-churchill-polar-bear-adventure/', sourceName: 'Frontiers North Adventures',
-    imageUrl: 'https://frontiersnorthadv.directus.app/assets/94a05f20-8de5-4582-8691-1eb46e932b23',
-    imageCredit: 'Robin Biswas / Frontiers North', fallbackImage: require('./assets/polar-bear-fallback.jpg'),
   },
 ];
 
 function FeaturedDestinationCard({ destination }: { destination: FeaturedDestination }) {
-  const [useFallback, setUseFallback] = useState(!destination.imageUrl);
   return <View style={styles.featuredCard}>
-    <ImageBackground source={useFallback ? destination.fallbackImage : { uri: destination.imageUrl! }} onError={() => setUseFallback(true)} style={styles.featuredPhoto} imageStyle={styles.heroImageCorners}>
-      <Text style={styles.photoLabel}>{useFallback ? 'AI ILLUSTRATION' : `PHOTO: ${destination.imageCredit ?? destination.sourceName}`}</Text>
+    <ImageBackground source={adventureImage(`${destination.title} ${destination.summary}`)} style={styles.featuredPhoto} imageStyle={styles.heroImageCorners}>
+      <Text style={styles.photoLabel}>AI ILLUSTRATION</Text>
     </ImageBackground>
     <View style={styles.featuredCardBody}>
       <Text style={styles.featuredCardLabel}>REAL EXPERIENCE · PAID</Text>
@@ -119,11 +147,10 @@ function formatWeekTime(time: string): string {
 }
 
 function WeekThumbnail({ event }: { event: WeeklyLocalEvent }) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const imageUrl = safeSourceUrl(event.imageUrl ?? '');
   return <View style={styles.weekThumbnail}>
-    {imageUrl && !imageFailed ? <Image source={{ uri: imageUrl }} style={styles.weekThumbnailImage} resizeMode="cover" onError={() => setImageFailed(true)} accessible={false} /> : <Text style={styles.weekThumbnailGlyph}>{weekSymbols[event.category] ?? '✧'}</Text>}
+    <Image source={weeklyImage(event)} style={styles.weekThumbnailImage} resizeMode="cover" accessible={false} />
     <View style={styles.weekDateBadge}><Text style={styles.weekDateMonth}>{formatWeekDate(event.eventDate, { month: 'short' }).toUpperCase()}</Text><Text style={styles.weekDateNumber}>{Number(event.eventDate.slice(-2))}</Text></View>
+    <Text style={styles.weekIllustrationLabel}>ILLUSTRATION</Text>
   </View>;
 }
 
@@ -169,12 +196,10 @@ function IncomingShare({ onReceive }: { onReceive: (imageUri: string | null, ima
 }
 
 function Card({ item, saved, loved, distanceUnit, onOpen, onSave, onLove, onPass }: { item: Experience; saved: boolean; loved: boolean; distanceUnit: Preferences['distanceUnit']; onOpen: () => void; onSave: () => void; onLove: () => void; onPass: () => void }) {
-  const artInk = item.accent === '#103D46' ? '#F5F8F7' : '#103D46';
-  const sampleImage = item.mode === 'live' ? undefined : sampleImages[item.id];
   const checked = item.verifiedAt ? Date.parse(item.verifiedAt) : NaN;
   const checkedRecently = Number.isFinite(checked) && checked <= Date.now() && Date.now() - checked <= 48 * 60 * 60 * 1000;
   return <View style={styles.card}>
-    {sampleImage ? <ImageBackground source={sampleImage} style={styles.cardPhoto}><Text style={styles.photoLabel}>ILLUSTRATIVE PHOTO</Text></ImageBackground> : <View style={[styles.cardArt, { backgroundColor: item.accent }]}><Text style={[styles.artGlyph, { color: artInk }]}>{item.category === 'Dance' ? '✦' : item.category === 'Outdoors' ? '◒' : item.category === 'Arts' ? '✳' : item.category === 'Food' ? '◌' : item.category === 'Learning' ? '✧' : '☼'}</Text><Text style={[styles.artLabel, { color: artInk }]}>{item.category.toUpperCase()}</Text></View>}
+    <ImageBackground source={experienceImage(item)} style={styles.cardPhoto}><Text style={styles.photoLabel}>AI ILLUSTRATION</Text></ImageBackground>
     <View style={styles.cardBody}>
       <View style={styles.rowBetween}><Text style={styles.eyebrow}>{item.mode === 'live' ? checkedRecently ? 'Source checked recently' : 'Recheck source' : 'Sample'} · {item.format} · {formatDate(item.startsAt)}</Text><Text style={styles.cost}>{money(item.totalCost, item.currency)}</Text></View>
       <Text style={styles.cardTitle}>{item.title}</Text>
@@ -496,7 +521,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
   const visible = ranked.filter(item => (activeCategory === 'All' || item.category === activeCategory) && (!activeQuery || `${item.title} ${item.category} ${item.tags.join(' ')} ${item.location}`.toLocaleLowerCase().includes(activeQuery.toLocaleLowerCase())));
   const diverse = showDiverse ? [...visible].sort((a, b) => Number(preferences.interests.includes(a.category)) - Number(preferences.interests.includes(b.category))) : visible;
   const organicItems = diverse;
-  const weeklyPicks: FeaturedDestination[] = weeklyFeatured?.adventures.map(adventure => ({ ...adventure, fallbackImage: require('./assets/weekly-adventure-fallback.jpg') })) ?? [];
+  const weeklyPicks: FeaturedDestination[] = weeklyFeatured?.adventures ?? [];
   const visibleFeatured = weeklyPicks.length ? weeklyPicks : featuredDestinations;
   const weeklyToday = localDateKey();
   const weeklyEnd = addDaysToDateKey(weeklyToday, 6);
@@ -949,7 +974,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
       {!selected && lastPassed && <View style={styles.undoBanner}><Text style={styles.undoText}>Passed on {lastPassed.item.title}</Text><Pressable onPress={undoPass}><Text style={styles.undoLink}>Undo</Text></Pressable></View>}
       {selected ? <View>
         <Pressable onPress={() => setSelected(null)}><Text style={styles.back}>‹ Back to exploring</Text></Pressable>
-        {selected.mode !== 'live' && sampleImages[selected.id] ? <ImageBackground source={sampleImages[selected.id]} style={styles.detailPhoto}><Text style={styles.photoLabel}>ILLUSTRATIVE PHOTO</Text></ImageBackground> : <View style={[styles.detailArt, { backgroundColor: selected.accent }]}><Text style={[styles.detailGlyph, { color: selected.accent === '#103D46' ? '#F5F8F7' : '#103D46' }]}>✦</Text><Text style={[styles.detailCategory, { color: selected.accent === '#103D46' ? '#F5F8F7' : '#103D46' }]}>{selected.category.toUpperCase()}</Text></View>}
+        <ImageBackground source={experienceImage(selected)} style={styles.detailPhoto}><Text style={styles.photoLabel}>AI ILLUSTRATION</Text></ImageBackground>
         <Text style={styles.eyebrow}>{selected.format} · {formatDate(selected.startsAt)}</Text>
         <Text style={styles.h1}>{selected.title}</Text><Text style={styles.lead}>{selected.summary}</Text>
         <View style={styles.infoPanel}><Text style={styles.infoText}>⌖  {selected.location} · about {formatDistance(selected.distanceKm, preferences.distanceUnit)} from {selected.mode === 'live' ? preferences.place : 'Toronto'}</Text><Text style={styles.infoText}>◷  Starts {formatDate(selected.startsAt)} · {selected.durationHours} hours</Text><Text style={styles.infoText}>$  {money(selected.totalCost, selected.currency)} listed cost</Text></View>
@@ -958,7 +983,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
         {selected.mode === 'live' && selected.verifiedAt ? <Text style={styles.helper}>Source last checked {formatDate(selected.verifiedAt)}. Confirm current details with the organizer.</Text> : null}
         <Action label={savedIds.includes(selected.id) ? 'Remove from saved' : 'Save for later'} onPress={() => toggleSaved(selected)} />
       </View> : tab === 'Discover' ? <View>
-        <ImageBackground source={require('./assets/discovery-hero-v2.png')} style={styles.heroImage} imageStyle={styles.heroImageCorners}><Text style={styles.heroKicker}>MAKE A STORY OF IT</Text><Text style={styles.heroTitle}>{'Find the\nunexpected.'}</Text></ImageBackground>
+        <ImageBackground source={require('./assets/original-photo-library/beginner-partner-dance.png')} style={styles.heroImage} imageStyle={styles.heroImageCorners}><Text style={styles.heroKicker}>MAKE A STORY OF IT</Text><Text style={styles.heroTitle}>{'Find the\nunexpected.'}</Text></ImageBackground>
         <View style={styles.homeIntro}><View style={styles.homeIntroText}><Text style={styles.sectionKicker}>LOCAL INSPIRATION</Text><Text style={styles.homeTitle}>{showingTorontoSamples ? 'Toronto ideas.' : `${preferences.place.split(',')[0].trim() || 'Local'} ideas.`}</Text></View><Pressable onPress={() => setTab('Settings')} style={styles.placeButton}><Text style={styles.placeButtonText}>⌖  Change place</Text></Pressable></View>
         <Text style={styles.homeLead}>{showingTorontoSamples ? 'Toronto sample ideas appear below. Featured destinations link to real organizer listings.' : homeWebIdeas.length || homeScoutCitations.length ? `Your scout found source-linked ideas for ${preferences.place}. Check each source before making plans.` : remoteScoutConfigured ? `Ask your scout to check current public sources for activities that fit your settings in ${preferences.place}.` : `No source-linked ideas for ${preferences.place} yet. The live web scout is being connected.`}</Text>
         <Action label={homeLoading ? 'Scouting for you…' : 'Find ideas for me'} onPress={() => { void runHomeScout(); }} />
@@ -1027,7 +1052,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
         </View>
         {!showMoreIdeas && organicItems.length > 3 && !searchOpen && <Action label="See more local ideas" onPress={() => setShowMoreIdeas(true)} secondary />}
         <Action label={showDiverse ? 'Back to your picks' : 'Show me something different'} onPress={() => setShowDiverse(value => !value)} secondary />
-        <Text style={styles.footerNote}>Sample idea photos are illustrative. Featured destination photos come from their organizers when available.</Text>
+        <Text style={styles.footerNote}>Images are AI illustrations, not photos of the listed events or venues. Open official details for current information.</Text>
       </View> : tab === 'Now' ? <View>
         <Text style={styles.sectionKicker}>SPONTANEOUS</Text><Text style={styles.h1}>What can I do today?</Text><Text style={styles.lead}>Your scout looks for source-linked ideas near {preferences.place} that fit the time you have, your interests and your budget.</Text>
         <Text style={styles.label}>Time available, including travel</Text><View style={styles.chipRow}>{[1, 2, 3, 5].map(value => <Pill key={value} label={`${value} hr`} active={timeHours === value} onPress={() => { nowRequestId.current += 1; setTimeHours(value); setNowIdeas([]); setNowMessage(''); setNowLoading(false); }} />)}</View>
@@ -1169,7 +1194,7 @@ const styles = StyleSheet.create({
   scoutStatus: { color: sea, fontSize: 11, fontWeight: '700', marginBottom: 12 }, deadlineText: { color: '#BB4A34', fontSize: 12, fontWeight: '800', marginBottom: 8 },
   importToggle: { backgroundColor: '#E6F7F3', borderWidth: 2, borderColor: '#103D46', borderRadius: 2, paddingHorizontal: 17, paddingVertical: 15, marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }, importPanel: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, padding: 17, marginBottom: 22 }, importHelp: { color: muted, fontSize: 12, lineHeight: 18, marginBottom: 15 }, reminderFeedback: { color: sea, fontSize: 12, lineHeight: 18, fontWeight: '700', marginBottom: 12 }, importInput: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#C9DCDA', borderRadius: 2, paddingHorizontal: 13, paddingVertical: 11, color: ink, fontSize: 14, marginBottom: 13 }, importPreview: { width: '100%', height: 180, borderRadius: 2, marginBottom: 12, backgroundColor: '#E6F7F3' }, importCandidate: { borderWidth: 1, borderColor: '#C9DCDA', backgroundColor: '#F4FBF9', padding: 13, marginBottom: 9 }, importCandidateTitle: { color: ink, fontWeight: '800', fontSize: 14, marginBottom: 3 }, importDateRow: { flexDirection: 'row', gap: 8 }, importDateInput: { flex: 2 }, importTimeInput: { flex: 1 }, importedCard: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, padding: 17, marginBottom: 16 }, importedImage: { width: '100%', height: 145, marginBottom: 13, borderRadius: 2 }, importedReminder: { color: sea, fontSize: 12, fontWeight: '800', marginTop: 8 },
   weekSection: { backgroundColor: '#F8F6F0', borderWidth: 2, borderColor: '#D6E2DB', borderRadius: 2, padding: 18, marginBottom: 20 }, weekKicker: { color: '#9D5C3E', fontSize: 10, fontWeight: '900', letterSpacing: 2.1, marginBottom: 10 }, weekTitle: { color: ink, fontSize: 29, lineHeight: 34, fontWeight: '900', letterSpacing: -0.8, marginBottom: 6 }, weekPlace: { color: muted, fontSize: 12, lineHeight: 18, marginBottom: 19 }, weekTopline: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', borderBottomWidth: 1, borderColor: '#CADBD3', paddingBottom: 12 }, weekRange: { color: ink, fontSize: 11, fontWeight: '900', letterSpacing: 1.8, textTransform: 'uppercase' }, weekCount: { color: muted, fontSize: 11 }, weekStatus: { color: '#9D5C3E', fontSize: 12, lineHeight: 18, marginTop: 13 }, weekDay: { borderBottomWidth: 1, borderColor: '#DCE5DE', paddingTop: 15 }, weekDayHeading: { flexDirection: 'row', alignItems: 'baseline', gap: 9, marginBottom: 4 }, weekDayName: { color: ink, fontSize: 19, fontWeight: '800' }, weekDayDate: { color: muted, fontSize: 11, fontWeight: '700' }, weekEvent: { minHeight: 61, flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 10, borderTopWidth: 1, borderColor: '#E7ECE6' }, weekIcon: { width: 33, height: 33, backgroundColor: '#DDECE5', alignItems: 'center', justifyContent: 'center', borderRadius: 2 }, weekIconText: { color: '#397560', fontSize: 19, fontWeight: '700' }, weekEventCopy: { flex: 1, minWidth: 0 }, weekEventTitle: { color: ink, fontSize: 14, fontWeight: '800', lineHeight: 19 }, weekEventMeta: { color: muted, fontSize: 11, marginTop: 3 }, weekArrow: { color: '#7B9D89', fontSize: 19, fontWeight: '700' }, weekEmpty: { color: muted, fontSize: 12, lineHeight: 18, paddingVertical: 20 }, weekFooter: { color: muted, fontSize: 10, lineHeight: 15, marginTop: 17 },
-  weekThumbnail: { width: 88, height: 88, backgroundColor: '#DDECE5', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }, weekThumbnailImage: { width: '100%', height: '100%' }, weekThumbnailGlyph: { color: '#397560', fontSize: 31, fontWeight: '700' }, weekDateBadge: { position: 'absolute', left: 5, top: 5, minWidth: 31, backgroundColor: '#F8F6F0', paddingHorizontal: 4, paddingVertical: 3, alignItems: 'center' }, weekDateMonth: { color: ink, fontSize: 7, fontWeight: '900', letterSpacing: 0.4 }, weekDateNumber: { color: ink, fontSize: 13, lineHeight: 15, fontWeight: '900' }, weekCategory: { color: '#9D5C3E', fontSize: 9, fontWeight: '900', letterSpacing: 0.8, marginBottom: 3 },
+  weekThumbnail: { width: 88, height: 88, backgroundColor: '#DDECE5', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }, weekThumbnailImage: { width: '100%', height: '100%' }, weekIllustrationLabel: { position: 'absolute', bottom: 0, width: '100%', color: '#FFFFFF', backgroundColor: 'rgba(16,61,70,0.85)', fontSize: 7, fontWeight: '900', letterSpacing: 0.2, textAlign: 'center', paddingVertical: 3 }, weekDateBadge: { position: 'absolute', left: 5, top: 5, minWidth: 31, backgroundColor: '#F8F6F0', paddingHorizontal: 4, paddingVertical: 3, alignItems: 'center' }, weekDateMonth: { color: ink, fontSize: 7, fontWeight: '900', letterSpacing: 0.4 }, weekDateNumber: { color: ink, fontSize: 13, lineHeight: 15, fontWeight: '900' }, weekCategory: { color: '#9D5C3E', fontSize: 9, fontWeight: '900', letterSpacing: 0.8, marginBottom: 3 },
   lookFurther: { backgroundColor: '#E6F7F3', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, paddingHorizontal: 17, paddingVertical: 15, marginBottom: 20, flexDirection: 'row', alignItems: 'center', gap: 12 }, lookFurtherActive: { backgroundColor: '#DDF2EE' }, lookFurtherCopy: { flex: 1 }, lookFurtherTitle: { color: ink, fontSize: 16, fontWeight: '900', marginBottom: 4 }, lookFurtherDetail: { color: muted, fontSize: 12, lineHeight: 18 }, lookFurtherArrow: { color: sea, fontSize: 22, fontWeight: '800' },
   homeIntro: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 8, marginBottom: 6 }, homeIntroText: { flex: 1 }, homeTitle: { color: ink, fontSize: 28, lineHeight: 32, fontWeight: '800', letterSpacing: -0.8 }, homeLead: { color: muted, fontSize: 13, lineHeight: 19, marginBottom: 16 }, placeButton: { paddingVertical: 8, paddingHorizontal: 9, borderRadius: 18, backgroundColor: '#E4F7F3', marginBottom: 4 }, placeButtonText: { color: sea, fontSize: 11, fontWeight: '800' },
   settingsButton: { backgroundColor: '#E1F4F0', borderRadius: 18, paddingHorizontal: 11, paddingVertical: 9 }, settingsButtonText: { color: sea, fontSize: 12, fontWeight: '800' }, searchToggle: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#18B8B0', borderRadius: 2, paddingHorizontal: 17, paddingVertical: 14, marginBottom: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, searchToggleText: { color: ink, fontSize: 15, fontWeight: '800' }, searchChevron: { color: sea, fontSize: 23, lineHeight: 25, fontWeight: '500' }, searchPanel: { marginBottom: 14 },
