@@ -14,7 +14,6 @@ export function AccountScreen({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<'signin' | 'create'>('create');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [notice, setNotice] = useState('');
@@ -44,13 +43,18 @@ export function AccountScreen({ onClose }: { onClose: () => void }) {
   const confirmDeletion = () => Alert.alert(
     'Delete account?',
     'This permanently deletes your account, service records, and saved items on this device. This cannot be undone.',
-    [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete account', style: 'destructive', onPress: () => { setDeleting(true); setErrorMessage(''); setNotice(''); } }],
+    [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete account', style: 'destructive', onPress: () => {
+      if (user) {
+        const usedApple = user.providerData.some(provider => provider.providerId === 'apple.com');
+        const success = usedApple
+          ? "Account and data deleted. You can also remove PB&B access in your Apple Account's Sign in with Apple settings."
+          : 'Account and data deleted.';
+        void run(() => deleteCurrentAccount(user), success);
+      }
+    } }],
   );
 
   const isRegistered = !!user && !user.isAnonymous;
-  const hasEmailPassword = !!user?.providerData.some(provider => provider.providerId === 'password');
-  const hasApple = !!user?.providerData.some(provider => provider.providerId === 'apple.com');
-  const hasGoogle = !!user?.providerData.some(provider => provider.providerId === 'google.com');
 
   return <ScrollView contentContainerStyle={styles.screen} keyboardShouldPersistTaps="handled">
     <Pressable onPress={onClose} accessibilityRole="button"><Text style={styles.back}>‹ Back to Settings</Text></Pressable>
@@ -62,31 +66,8 @@ export function AccountScreen({ onClose }: { onClose: () => void }) {
     {isRegistered ? <View style={styles.panel}>
       <Text style={styles.heading}>Signed in</Text>
       <Text style={styles.detail}>{user.email || 'Apple account'}</Text>
-      {!deleting ? <>
-        <Pressable style={styles.button} onPress={() => void run(signOutAccount, 'Signed out. You can continue as a guest.')} disabled={busy} accessibilityRole="button"><Text style={styles.buttonText}>Sign out</Text></Pressable>
-        <Pressable style={styles.deleteButton} onPress={confirmDeletion} disabled={busy} accessibilityRole="button"><Text style={styles.deleteText}>Delete account and data</Text></Pressable>
-      </> : <>
-        <Text style={styles.warning}>Confirm your identity to permanently delete this account and its service records.</Text>
-        {hasApple && appleAvailable ? <AppleAuthentication.AppleAuthenticationButton
-          buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-          buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-          cornerRadius={8}
-          style={styles.appleButton}
-          onPress={() => void run(() => deleteCurrentAccount(user, 'apple'), '', 'apple')}
-        /> : hasEmailPassword ? <>
-          <Text style={styles.fieldLabel}>Account password</Text>
-          <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="Account password" placeholderTextColor="#6B8588" secureTextEntry autoComplete="current-password" accessibilityLabel="Account password" />
-          <Pressable style={styles.deleteButton} onPress={() => void run(() => deleteCurrentAccount(user, 'email', password), '', 'email')} disabled={busy || !password} accessibilityRole="button"><Text style={styles.deleteText}>Permanently delete account</Text></Pressable>
-        </> : hasGoogle && Platform.OS === 'android' ? <GoogleSigninButton
-          size={GoogleSigninButton.Size.Wide}
-          color={GoogleSigninButton.Color.Light}
-          style={styles.googleButton}
-          disabled={busy}
-          onPress={() => void run(() => deleteCurrentAccount(user, 'google'), '', 'google')}
-          accessibilityLabel="Confirm with Google and delete account"
-        /> : <Text style={styles.warning}>The sign-in method for this account is unavailable on this device.</Text>}
-        <Pressable onPress={() => setDeleting(false)} disabled={busy} accessibilityRole="button"><Text style={styles.link}>Cancel deletion</Text></Pressable>
-      </>}
+      <Pressable style={styles.button} onPress={() => void run(signOutAccount, 'Signed out. You can continue as a guest.')} disabled={busy} accessibilityRole="button"><Text style={styles.buttonText}>Sign out</Text></Pressable>
+      <Pressable style={styles.deleteButton} onPress={confirmDeletion} disabled={busy} accessibilityRole="button"><Text style={styles.deleteText}>Delete account and data</Text></Pressable>
     </View> : <View style={styles.panel}>
       <View style={styles.modeRow}>
         <Pressable style={[styles.modeButton, mode === 'create' && styles.modeButtonActive]} onPress={() => { setMode('create'); setPassword(''); setErrorMessage(''); setNotice(''); }} disabled={busy} accessibilityRole="tab" accessibilityState={{ selected: mode === 'create' }}><Text style={styles.modeText}>Create account</Text></Pressable>

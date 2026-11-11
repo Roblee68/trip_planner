@@ -2,7 +2,7 @@
 
 ## Deployment and test status — 2026-11-11
 
-- Firebase Anonymous, Email/Password, and Apple authentication are enabled for `tripplanner-910da`. The `com.roblee.pbandb` App ID and the iPhone provisioning profile include Sign in with Apple. The Apple key used for revocation is stored in Firebase Secret Manager.
+- Firebase Anonymous, Email/Password, and Apple authentication are enabled for `tripplanner-910da`. The `com.roblee.pbandb` App ID and the iPhone provisioning profile include Sign in with Apple. Apple revocation credentials are stored in Firebase Secret Manager, but the confirmation-only deletion flow cannot revoke Apple access without a saved Apple token.
 - `deleteAccount` and the image-suppression update to `getWeeklyLocalEvents` are deployed. The updated privacy and support pages are live. No bundled or marketing image was changed.
 - PB&B `0.1.0 (2)` was installed on a Moto G (Android 16) and Rob’s iPhone 16 Pro (iOS 27.2). The Moto G account screen and image-report link were checked visually. The iPhone build launched on the physical device.
 - A disposable email account reached the live deletion callable, which returned `deleted: true`. The account was removed. The first request made immediately after deployment received HTTP 401; a repeat with a fresh Firebase token succeeded after the service settled.
@@ -11,7 +11,7 @@
 ## Account setup before a release candidate
 
 1. Keep Anonymous Authentication enabled so people can explore as guests. Enable Firebase Email/Password and Apple authentication for the release project. Configure Apple's provider in Firebase, the Sign in with Apple capability for `com.roblee.pbandb`, and a provisioning profile that includes that capability.
-2. Create the `APPLE_SIGN_IN_TEAM_ID`, `APPLE_SIGN_IN_KEY_ID`, and `APPLE_SIGN_IN_PRIVATE_KEY` Firebase secrets for `deleteAccount`. The private key must remain in Secret Manager. The deletion callable uses a fresh Apple authorization code to exchange and revoke the user's Apple token before deleting records and the Firebase account.
+2. Account deletion requires an active Firebase sign-in and one confirmation. The server deletes account records and the Firebase user without asking the person to sign in again. For Apple accounts without a saved revocation token, the app shows a post-deletion note explaining how to remove PB&B access from Apple Account settings. Apple token revocation remains a release follow-up.
 3. Test registration, sign-in, password reset, sign-out, guest access, and account deletion on a physical iPhone with the release backend. After deletion, verify that Firebase Authentication, `scoutSubscriptions`, `scoutNotifications`, and the user's `agentUsage` documents are gone. Verify local saved ideas and imported screenshots are removed from that device. Test the email and Apple paths separately.
 4. Record the tested app version/build and device OS. Provide a working review account or fully featured demo mode in App Store Connect. The requested screen recording must launch the app and show the account creation, sign-in, and deletion flows along with the ordinary discovery flow.
 

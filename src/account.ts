@@ -7,7 +7,7 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { Platform } from 'react-native';
 import {
   EmailAuthProvider, GoogleAuthProvider, OAuthProvider, createUserWithEmailAndPassword, linkWithCredential,
-  reauthenticateWithCredential, sendPasswordResetEmail, signInWithCredential,
+  sendPasswordResetEmail, signInWithCredential,
   signInWithEmailAndPassword, signOut, type AuthCredential, type User,
 } from 'firebase/auth';
 import { getApp } from 'firebase/app';
@@ -139,29 +139,18 @@ async function removeLocalAccountData(uid: string): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
 }
 
-export async function deleteCurrentAccount(user: User, method: 'email' | 'apple' | 'google', password = ''): Promise<void> {
+export async function deleteCurrentAccount(user: User): Promise<void> {
   const auth = getScoutAuth();
   if (auth.currentUser?.uid !== user.uid || user.isAnonymous) throw new Error('Sign in to the account you want to delete.');
-  let appleAuthorizationCode: string | undefined;
-  if (method === 'email') {
-    if (!user.email || !password) throw new Error('Enter your password to confirm deletion.');
-    await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, password));
-  } else if (method === 'apple') {
-    const apple = await appleCredential();
-    await reauthenticateWithCredential(user, apple.credential);
-    appleAuthorizationCode = apple.authorizationCode;
-  } else {
-    await reauthenticateWithCredential(user, await googleCredential());
-  }
   await user.getIdToken(true);
-  const call = httpsCallable<{ appleAuthorizationCode?: string }, { deleted: boolean }>(
+  const call = httpsCallable<Record<string, never>, { deleted: boolean }>(
     getFunctions(getApp(), 'northamerica-northeast2'), 'deleteAccount', { timeout: 120_000 },
   );
-  const result = await call({ appleAuthorizationCode });
+  const result = await call({});
   if (!result.data.deleted) throw new Error('Account deletion could not be confirmed. Please try again.');
   await removeLocalAccountData(user.uid);
   await signOut(auth).catch(() => {});
-  if (method === 'google') await GoogleSignin.signOut().catch(() => {});
+  if (user.providerData.some(provider => provider.providerId === 'google.com')) await GoogleSignin.signOut().catch(() => {});
 }
 
 export async function ensureGuestAccount(): Promise<void> {
@@ -179,7 +168,6 @@ export function accountErrorMessage(error: unknown, method: 'email' | 'apple' | 
   if (code === 'auth/operation-not-allowed') return method === 'apple' ? 'Apple sign-in is not available right now. Please contact PB&B support.' : method === 'google' ? 'Google sign-in is not available right now. Please contact PB&B support.' : 'This sign-in method is not available right now. Please contact PB&B support.';
   if (code === 'DEVELOPER_ERROR' || code === '10') return 'Google sign-in needs a configuration update. Please contact PB&B support.';
   if (code === 'auth/missing-or-invalid-nonce') return 'Apple sign-in could not be verified. Please contact PB&B support.';
-  if (code === 'auth/requires-recent-login') return 'Please sign in again, then retry account deletion.';
   if (code === 'auth/credential-already-in-use') return 'This Apple account is already linked to another account. Sign in with Apple instead.';
   if (code === 'auth/account-exists-with-different-credential') return 'An account already uses this email. Sign in with its existing method.';
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
