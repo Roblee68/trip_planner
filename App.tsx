@@ -6,7 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useIncomingShare } from 'expo-sharing';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { Alert, AppState, Image, ImageBackground, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, Pressable, View } from 'react-native';
+import { Alert, AppState, Image, ImageBackground, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { categories, daysUntil, defaultPreferences, interestTopics, matchedTopics, money, namedInterestSuggestions, normalizeTopics, opportunityAlerts, rankExperiences, topicGroups, travelModeLabels, travelModes, type Category, type Experience, type Feedback, type Preferences, type InterestTopic, type TravelMode } from './src/logic';
 import { currencyForCountry, currencyName, currencyOptions } from './src/currencies';
@@ -241,6 +241,7 @@ function Card({ item, saved, loved, distanceUnit, onOpen, onSave, onLove, onPass
 
 export default function App() {
   const [accountUid, setAccountUid] = useState<string | null>(null);
+  const [deletionNotice, setDeletionNotice] = useState<string | null>(null);
   const previousUser = useRef<User | null>(null);
   useEffect(() => {
     if (!Object.values(firebaseConfig).every(Boolean)) { setAccountUid('local'); return; }
@@ -258,11 +259,25 @@ export default function App() {
     }, () => setAccountUid('local'));
     return unsubscribe;
   }, []);
-  if (!accountUid) return <SafeAreaView style={styles.safe}><View style={styles.loading}><Text style={styles.brand}>PB&B ✦</Text><Text style={styles.lead}>Getting your ideas ready…</Text></View></SafeAreaView>;
-  return <AppContent key={accountUid} accountUid={accountUid} />;
+  return <>
+    {accountUid
+      ? <AppContent key={accountUid} accountUid={accountUid} onAccountDeleted={setDeletionNotice} />
+      : <SafeAreaView style={styles.safe}><View style={styles.loading}><Text style={styles.brand}>PB&B ✦</Text><Text style={styles.lead}>Getting your ideas ready…</Text></View></SafeAreaView>}
+    <Modal visible={deletionNotice !== null} transparent animationType="fade" onRequestClose={() => {}}>
+      <View style={styles.deletionOverlay}>
+        <View style={styles.deletionDialog} accessibilityViewIsModal>
+          <Text style={styles.deletionTitle} accessibilityRole="header">Account deleted</Text>
+          <Text style={styles.deletionMessage}>{deletionNotice}</Text>
+          <Pressable style={styles.deletionContinue} onPress={() => setDeletionNotice(null)} accessibilityRole="button">
+            <Text style={styles.deletionContinueText}>OK</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  </>;
 }
 
-function AppContent({ accountUid }: { accountUid: string }) {
+function AppContent({ accountUid, onAccountDeleted }: { accountUid: string; onAccountDeleted: (message: string) => void }) {
   const [tab, setTab] = useState<Tab>('Discover');
   const [discoverMode, setDiscoverMode] = useState<DiscoverMode>('for-you');
   const [weekInterest, setWeekInterest] = useState<WeekInterest>('All');
@@ -1036,7 +1051,7 @@ function AppContent({ accountUid }: { accountUid: string }) {
   };
 
   if (!hydrated) return <SafeAreaView style={styles.safe}><View style={styles.loading}><Text style={styles.brand}>PB&B ✦</Text><Text style={styles.lead}>Getting your ideas ready…</Text></View></SafeAreaView>;
-  if (accountOpen) return <SafeAreaView style={styles.safe}><StatusBar style="dark" /><AccountScreen onClose={() => setAccountOpen(false)} /></SafeAreaView>;
+  if (accountOpen) return <SafeAreaView style={styles.safe}><StatusBar style="dark" /><AccountScreen onClose={() => setAccountOpen(false)} onDeleted={onAccountDeleted} /></SafeAreaView>;
   return <SafeAreaView style={styles.safe}><StatusBar style="dark" />
     <IncomingShareBoundary><IncomingShare onReceive={receiveShare} /></IncomingShareBoundary>
     <View style={styles.header}><View style={styles.brandRow}><Image source={require('./assets/pbb-mountain-mark.png')} style={styles.brandMark} accessibilityLabel="PB&B mountain explorer taking a photo" /><View style={styles.brandInfo}><Text style={styles.brand}>PB&B</Text><Text style={styles.brandSub} numberOfLines={1}>Exploring {preferences.place || 'anywhere'}</Text></View></View><Pressable onPress={() => setTab('Settings')} style={styles.settingsButton} accessibilityRole="button" accessibilityLabel="Open settings"><SettingsIcon size={16} color={sea} /><Text style={styles.settingsButtonText}>Settings</Text></Pressable></View>
@@ -1276,6 +1291,12 @@ function Setting({ label, value, onPress }: { label: string; value: boolean; onP
 }
 
 const styles = StyleSheet.create({
+  deletionOverlay: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(16, 61, 70, 0.65)' },
+  deletionDialog: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 24 },
+  deletionTitle: { color: '#103D46', fontSize: 24, fontWeight: '800', marginBottom: 12 },
+  deletionMessage: { color: '#103D46', fontSize: 16, lineHeight: 24, marginBottom: 24 },
+  deletionContinue: { backgroundColor: '#B9ED5C', borderRadius: 8, padding: 16, alignItems: 'center' },
+  deletionContinueText: { color: '#103D46', fontSize: 16, fontWeight: '800' },
   safe: { flex: 1, backgroundColor: '#F5F8F7' }, header: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderColor: '#DCE8E4' },
   heroImage: { height: 156, borderRadius: 2, padding: 21, justifyContent: 'flex-end', marginBottom: 16, overflow: 'hidden' }, heroImageCorners: { borderRadius: 2 }, heroScrim: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0, 0, 0, 0.38)' }, heroCopy: { zIndex: 1 }, heroKicker: { color: '#B9ED5C', fontSize: 10, fontWeight: '900', letterSpacing: 1.6, marginBottom: 7 }, heroTitle: { color: '#FFFFFF', fontSize: 27, fontWeight: '900', lineHeight: 31, letterSpacing: -0.6, maxWidth: 200 }, heroIllustration: { position: 'absolute', right: 11, top: 11, color: '#FFFFFF', backgroundColor: 'rgba(16, 61, 70, 0.72)', fontSize: 8, fontWeight: '800', letterSpacing: 0.8, paddingHorizontal: 7, paddingVertical: 4, overflow: 'hidden' },
   discoverChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24 },

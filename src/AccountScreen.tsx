@@ -9,7 +9,7 @@ import {
 } from './account';
 import { getScoutAuth } from './remoteScout';
 
-export function AccountScreen({ onClose }: { onClose: () => void }) {
+export function AccountScreen({ onClose, onDeleted }: { onClose: () => void; onDeleted: (message: string) => void }) {
   const [user, setUser] = useState<User | null>(null);
   const [mode, setMode] = useState<'signin' | 'create'>('create');
   const [email, setEmail] = useState('');
@@ -47,9 +47,9 @@ export function AccountScreen({ onClose }: { onClose: () => void }) {
       if (user) {
         const usedApple = user.providerData.some(provider => provider.providerId === 'apple.com');
         const success = usedApple
-          ? "Account and data deleted. You can also remove PB&B access in your Apple Account's Sign in with Apple settings."
-          : 'Account and data deleted.';
-        void run(() => deleteCurrentAccount(user), success);
+          ? "Your PB&B account and saved data have been deleted. You can also remove PB&B access in your Apple Account's Sign in with Apple settings."
+          : 'Your PB&B account and saved data have been deleted.';
+        void run(async () => { await deleteCurrentAccount(user); onDeleted(success); });
       }
     } }],
   );
