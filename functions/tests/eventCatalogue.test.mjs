@@ -26,6 +26,15 @@ test('stable IDs deduplicate repeat imports and keep separate dated sessions',()
   assert.equal(make().id,make({summary:'Updated description'}).id);
   assert.notEqual(make().id,make({eventDate:'2026-11-12',startsAt:'2026-11-12T11:00:00-05:00'}).id);
 });
+test('discovery shows distinct activities rather than five sessions of one series',()=>{
+  const first=make(),next=make({eventDate:'2026-11-12',startsAt:'2026-11-12T11:00:00-05:00'});
+  const other=make({title:'Gallery tour',sourceEventId:'gallery'});
+  assert.deepEqual(selectStoredEvents([first,next,other],request,now).map(event=>event.title).sort(),['Gallery tour','Pottery workshop']);
+});
+test('date labels display the event timezone as a readable abbreviation',()=>{
+  const label=storedScoutResponse([make()],request,now).ideas[0].dateText;
+  assert.match(label,/Nov/);assert.match(label,/EST/);assert.doesNotMatch(label,/America\//);
+});
 test('unknown price and coordinates stay unknown; free price is explicit',()=>{
   const event=make({priceAmount:null});assert.equal(event.priceAmount,null);assert.equal(event.latitude,null);
   assert.equal(selectStoredEvents([event],{...request,prompt:'Something free'},now).length,0);
@@ -60,6 +69,7 @@ test('truncated feeds fail instead of publishing a partial replacement',async()=
 test('Toronto imports dated sessions and explicit free admission with attribution',()=>{
   const row={id:'public-id',calendar_date:'2026-11-11T11:00:00-05:00',event_name:'Museum workshop',free_event:'Yes',event_status:'Approved',event_website:'https://museum.example/workshop',event_category:['Arts/Exhibits'],event_locations:[{location_address:'Toronto',location_dates:'[]'}]};
   const event=torontoEvent(row,now);assert.equal(event.priceAmount,0);assert.equal(event.timeZone,'America/Toronto');assert.match(event.attribution,/Open Government Licence/);
+  assert.equal(torontoEvent({...row,event_name:'Classical ballet',event_category:['Dance']},now).category,'theatre');
   assert.equal(torontoEvent({...row,calendar_date:'2025-11-11T11:00:00-05:00'},now),null);
 });
 test('daily allowance applies inclusive user/global boundaries and UTC rollover',()=>{

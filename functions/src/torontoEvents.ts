@@ -60,7 +60,7 @@ export function torontoEvent(row: Record<string, unknown>, now = new Date()): St
   const organizer = typeof row.event_website === 'string' && row.event_website.startsWith('https://') ? row.event_website :
     'https://open.toronto.ca/dataset/festivals-events/';
   const categoryText = Array.isArray(row.event_category) ? row.event_category.join(' ') : '';
-  const category = /dance|class|workshop/i.test(categoryText) ? 'classes' : /music/i.test(categoryText) ? 'music' : /theatre/i.test(categoryText) ? 'theatre' : /art|exhibit/i.test(categoryText) ? 'arts' : /food/i.test(categoryText) ? 'food' : /sport/i.test(categoryText) ? 'sports' : /outdoor|nature/i.test(categoryText) ? 'outdoors' : 'community';
+  const category = /\b(classes?|workshops?|lessons?|courses?)\b/i.test(`${categoryText} ${row.event_name}`) ? 'classes' : /music/i.test(categoryText) ? 'music' : /theatre|dance|performance/i.test(categoryText) ? 'theatre' : /art|exhibit/i.test(categoryText) ? 'arts' : /food/i.test(categoryText) ? 'food' : /sport/i.test(categoryText) ? 'sports' : /outdoor|nature/i.test(categoryText) ? 'outdoors' : 'community';
   return normalizeEvent({ title: row.event_name, summary: row.event_description || row.short_description, category,
     topics: row.event_category, eventDate: date, eventTime: time, startsAt, endsAt,
     priceAmount: price, currency: 'CAD', venue: location.location_name || location.location_address,

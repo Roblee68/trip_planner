@@ -98,15 +98,26 @@ export function selectStoredEvents(events: StoredEvent[], request: ScoutRequest,
     const day = now.toISOString().slice(0, 10);
     scored.sort((a,b) => createHash('sha256').update(day+a.event.id).digest('hex').localeCompare(createHash('sha256').update(day+b.event.id).digest('hex')));
   }
-  return scored.slice(0, request.occasion === 'discover' ? 5 : 3).map(value => value.event);
+  const seenSeries = new Set<string>();
+  return scored.filter(({event}) => {
+    const series = `${event.title.toLowerCase()}|${event.venue.toLowerCase()}`;
+    if (seenSeries.has(series)) return false;
+    seenSeries.add(series);return true;
+  }).slice(0, request.occasion === 'discover' ? 5 : 3).map(value => value.event);
+}
+function eventDateLabel(event: StoredEvent): string {
+  if (event.startsAt) return new Intl.DateTimeFormat('en-CA',{timeZone:event.timeZone,month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(new Date(event.startsAt));
+  const date=new Intl.DateTimeFormat('en-CA',{timeZone:'UTC',month:'short',day:'numeric',year:'numeric'}).format(new Date(`${event.eventDate}T12:00:00Z`));
+  const zone=new Intl.DateTimeFormat('en',{timeZone:event.timeZone,timeZoneName:'shortGeneric'}).formatToParts(new Date(`${event.eventDate}T12:00:00Z`)).find(part=>part.type==='timeZoneName')?.value??event.timeZone;
+  return `${date}${event.eventTime?` ${event.eventTime}`:''} · ${zone}`;
 }
 export function storedScoutResponse(events: StoredEvent[], request: ScoutRequest, now = new Date()): ScoutResponse {
   const selected = selectStoredEvents(events, request, now);
   return { mode: 'live', picks: [], followUp: null,
     message: selected.length ? `Source-linked ideas from the shared ${request.place} collection. Check prices, availability and travel time with the organizer.` : `No current match in the shared ${request.place} collection yet. Try another date or interest; new listings are collected centrally.`,
     ideas: selected.map(event => ({ id: event.id, title: event.title, summary: event.summary || 'See the organizer’s listing for details.',
-      reason: `${event.category}. Check travel time and any unlisted price before leaving.`, eventDate: event.eventDate,
-      dateText: `${event.eventDate}${event.eventTime ? ` ${event.eventTime}` : ''} · ${event.timeZone}`,
+      reason: `${({classes:'Classes and workshops',theatre:'Theatre and dance',arts:'Arts and culture',music:'Live music',food:'Food and drink',community:'Community events',sports:'Sports',markets:'Markets',outdoors:'Outdoors'} as Record<string,string>)[event.category]??'A local event'}. Check travel time and any unlisted price before leaving.`, eventDate: event.eventDate,
+      dateText: eventDateLabel(event),
       priceText: event.priceAmount === null ? 'Price not listed — check source' : event.priceAmount === 0 ? 'Free' : `${event.currency} ${event.priceAmount}`,
       venue: event.venue || event.place, address: event.address || null, place: event.place, sourceUrl: event.sourceUrl, foundAt: event.checkedAt,
       timeZone: event.timeZone, startsAt: event.startsAt, endsAt: event.endsAt })) };
