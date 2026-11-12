@@ -87,3 +87,5 @@ export const getWeeklyLocalEvents = onCall({ region: 'northamerica-northeast2', 
 export { dailyOpportunityScan };
 
 export const refreshEventCatalogue = onSchedule({schedule:'every 30 minutes',timeZone:'UTC',region:'northamerica-northeast2',timeoutSeconds:540,memory:'1GiB',maxInstances:1,secrets:[openaiApiKey]},refreshRequestedCities);
+
+export { submitOrganizerEvent } from './organizerSubmissions.js';
